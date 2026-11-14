@@ -1,0 +1,42 @@
+x-app: &app
+  build: .
+  environment:
+    GOOGLE_API_KEY: ${GOOGLE_API_KEY:?set GOOGLE_API_KEY in .env}
+    GEMINI_MODEL: ${GEMINI_MODEL:-gemini-4-carbon}
+    BOXD_TOKEN: ${BOXD_TOKEN:-}  # `boxd auth keys create watchdog`; without it the fix test fails with an auth error
+    VENICE_API_KEY: ${VENICE_API_KEY:-}  # Venice AI key for exploit PoC generation; without it the exploit step fails with a clear error
+    CELERY_BROKER_URL: redis://redis:6379/0
+  volumes:
+    - watchdog-data:/data              # SQLite DB survives rebuilds
+    - ./backend/watchdog.toml:/app/watchdog.toml:ro   # CVE poll + VM scan intervals; edit, then `docker compose restart`
+    - ${SSH_DIR:-~/.ssh}:/ssh-src:ro   # keys + config used to reach the VMs
+    - ${BOXD_DIR:-~/AppData/Roaming/boxd}:/boxd-src:ro   # boxd CLI keys referenced by ~/.ssh/config
+  depends_on:
+    redis: { condition: service_healthy }
+  restart: unless-stopped
+
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+
+  watchdog:
+    <<: *app
+    ports:
+      - "127.0.0.1:5000:5000"  # dashboard has no auth: localhost only
+
+  worker:  # replays + new-CVE evaluation (LLM calls, in parallel)
+    <<: *app
+    command: celery -A config worker -c 4 -Q celery
+
+  worker-remediation:  # snapshot/clone/exploit tests, one at a time
+    <<: *app
+    command: celery -A config worker -c 1 -Q remediation -n remediation@%h
+
+  beat:  # schedules the new-CVE feed poll
+    <<: *app
+    command: celery -A config beat --schedule /tmp/celerybeat-schedule
+
+volumes:
+  watchdog-data:
