@@ -31,9 +31,8 @@ Today that is hours of manual triage per CVE. CVE Watchdog does all three on its
 
 ```mermaid
 flowchart LR
-    A[cve.org feed] -->|new CVE| B[Match against<br/>VM inventories]
-    V[Your VMs] -->|SSH inventory:<br/>packages, ports,<br/>services, containers| B
-    B -->|candidate hits| C[LLM jury<br/>Gemini + Venice]
+    A[cve.org feed] -->|new CVE| C[LLM jury<br/>Gemini + Venice<br/>every CVE × every VM]
+    V[Your VMs] -->|SSH inventory:<br/>packages, ports,<br/>services, containers| C
     C -->|affected| D[Snapshot VM →<br/>clone in sandbox]
     D --> E[Apply AI-planned fix<br/>on the clone]
     E --> F{Fixed and<br/>services healthy?}
@@ -46,8 +45,7 @@ flowchart LR
 |---|---|
 | 📡 **Watch** | Polls the official [CVEProject](https://github.com/CVEProject/cvelistV5) delta log every minute. |
 | 🔍 **Inventory** | SSHes into each VM with a stdlib-only collector: OS packages (dpkg/rpm), pip/npm packages, listening ports, running services, Docker containers. |
-| 🎯 **Match** | Cheap name matching filters out CVEs that can't apply, so the LLMs only see real candidates. |
-| ⚖️ **Judge** | One or more models vote `affected` / `likely` / `not_affected` with evidence and actions. Majority wins; disagreement lowers confidence. |
+| ⚖️ **Judge** | Every new CVE is judged against every VM. One or more models vote `affected` / `likely` / `not_affected` with evidence and actions. Majority wins; disagreement lowers confidence. Components whose names match the CVE are highlighted in the prompt; if none match, the model gets the full inventory to catch aliases (e.g. `httpd` = Apache HTTP Server). |
 | 🧪 **Fix test** | For affected VMs: snapshot via [boxd](https://boxd.sh), boot an isolated clone, run the model's fix commands, then re-inventory and check no service broke. Production is never touched. |
 | 💥 **Exploit check** | If the fix passed, a model writes a non-destructive proof-of-concept, which runs from a throwaway attacker VM on a private network against the patched clone. Everything is destroyed afterwards. |
 | 📊 **Report** | A live dashboard shows each finding, the votes, the commands run, and whether the exploit still lands. |
@@ -80,7 +78,7 @@ backend/
   config/            Django settings, Celery app, timing config loader
   watchdog/
     collector.py     runs on the VM over SSH, prints a JSON inventory
-    engine.py        feed → match → judge → remediate → exploit
+    engine.py        feed → judge → remediate → exploit
     tasks.py         Celery tasks
     views.py         JSON API for the dashboard
   watchdog.toml      poll and scan intervals
@@ -161,6 +159,6 @@ To start over completely (demo VMs, **all** boxd snapshots, database), run `./re
 
 ## Known limits
 
-- Linux kernel CVEs are skipped. They match every VM by name; a kernel-version check would be needed.
+- LLM cost grows with CVEs × VMs × models: every pair is a call. Use a cheap judge model if feed volume hurts.
 - "Exposed" ports mean bound to all interfaces. Firewalls and cloud security groups aren't checked.
 - Fix and exploit tests require boxd VMs, because they depend on snapshots.
