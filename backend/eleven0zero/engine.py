@@ -722,6 +722,11 @@ def remediate(cve_id, host):
             verdict = judge(record, host, after, hits, quiet=True)["verdict"] if hits else "not_affected"
             rem.update(verdict_after=verdict, fixed=verdict == "not_affected")
             rem["status"] = "passed" if rem["fixed"] and rem["services_ok"] else "failed"
+            if rem["status"] == "passed":  # keep the patched clone as a deployable snapshot, before the PoC touches it
+                rem["fixed_snapshot"] = fixed = f"wdf-{machine}-{int(time.time())}"
+                emit(cve_id, "fix_out", f"boxd snapshots save {clone} {fixed}", host)
+                boxd_ok("snapshots", "save", clone, fixed, region=region)
+                rem["deploy_cmd"] = f"boxd --region {region} new {machine}-patched --from-snapshot {fixed}"
             emit(cve_id, "fix_done", f"{rem['status']}: clone {clone} {'patched & services healthy' if rem['status'] == 'passed' else 'fix check failed'}", host)
             save()
             if rem["status"] == "passed":
@@ -782,6 +787,12 @@ def add_demo_hosts():
             Vm.objects.get_or_create(host=host)
         else:
             print(f"[demo] ignoring invalid DEMO_HOSTS entry {host!r}")
+    shutdown = os.getenv("DEMO_SHUTDOWN_HOSTS")
+    if shutdown is not None:  # only until someone picks shutdown VMs in Settings
+        s, _ = Setting.objects.get_or_create(pk=1)
+        if s.shutdown_hosts is None:
+            s.shutdown_hosts = [h for h in (x.strip() for x in shutdown.split(",")) if HOST_RE.fullmatch(h)]
+            s.save(update_fields=["shutdown_hosts"])
 
 
 def start():

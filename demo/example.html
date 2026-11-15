@@ -186,7 +186,7 @@
       justify-content: space-between;
       gap: 10px;
     }
-    .control-left, .control-right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .control-left { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .cve-tab {
       display: inline-flex;
       align-items: center;
@@ -493,37 +493,31 @@
       .sandbox-row-agents, .sandbox-row-vms { grid-template-columns: 1fr; }
       .sandbox-mid-arrow { display: none !important; }
     }
+    .sandbox-flow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 40px minmax(0, 0.88fr) 40px minmax(0, 1fr);
+      gap: 8px;
+      align-items: stretch;
+    }
+    @media (max-width: 900px) {
+      .sandbox-flow { grid-template-columns: 1fr; }
+      .sandbox-arrow { display: none !important; }
+    }
     .sb-card {
       border: 1.5px solid var(--border);
       border-radius: var(--radius);
       padding: 12px;
-      display: grid;
-      gap: 9px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
       background: rgba(13, 19, 31, 0.7);
     }
     .sb-card.cyan { border-color: var(--primary); background: rgba(34, 211, 238, 0.06); }
     .sb-card.safe { border-color: rgba(52, 211, 153, 0.8); background: rgba(52, 211, 153, 0.06); }
     .sb-card.rose { border-color: var(--affected); background: rgba(251, 113, 133, 0.08); }
     .sb-card.amber { border-color: rgba(251, 191, 36, 0.75); background: rgba(251, 191, 36, 0.07); }
-    .sb-card.dim { opacity: 0.62; }
-
-    .sb-steps { list-style: none; display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid rgba(30, 43, 64, 0.7); }
-    .sb-step { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; color: var(--muted-fg); }
-    .sb-step.done { color: var(--fg); }
-    .sb-step.active { color: var(--primary); font-weight: 600; }
-    .sb-step.bad { color: var(--affected); font-weight: 600; }
-
-    .shutdown-banner {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: var(--radius);
-      border: 1.5px solid rgba(251, 191, 36, 0.55);
-      background: rgba(251, 191, 36, 0.09);
-      color: var(--fg);
-      font-size: 13px;
-    }
+    .sb-card.dim { opacity: 0.58; }
 
     /* Live Activity Box */
     .terminal-card {
@@ -546,7 +540,7 @@
       font-size: 12px;
     }
     .terminal-body {
-      height: 600px;
+      height: 500px;
       overflow-y: auto;
       padding: 14px;
       font-family: var(--mono);
@@ -730,37 +724,16 @@
   </header>
 
   <main>
-    <!-- Top Simulation Control Bar -->
-    <section class="card control-bar" aria-label="CVE arrival simulation">
-      <div class="control-left">
-        <button type="button" id="btn-trigger" class="btn btn-primary">Simulate CVE arrival</button>
-        <div role="tablist" aria-label="Arrived threats" id="cve-tabs" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-      </div>
-      <div class="control-right">
-        <button type="button" id="btn-threshold-pill" class="badge badge-likely" title="Configure in Settings">
-          Auto-shutdown: CVSS ≥ 9.0
-        </button>
-        <span class="timeline-progress" id="step-counter">Standby · 5 servers monitored</span>
-        <button type="button" id="btn-pause" class="btn btn-outline btn-xs" hidden>Pause</button>
-        <button type="button" id="btn-step" class="btn btn-outline btn-xs">Step +1</button>
-        <button type="button" id="btn-finish" class="btn btn-outline btn-xs">Jump to end</button>
-        <button type="button" id="btn-reset" class="btn btn-outline btn-xs">Reset</button>
-      </div>
+    <!-- Minimal Top Bar -->
+    <section class="card control-bar" aria-label="Simulation controls">
+      <div class="control-left" id="cve-tabs"></div>
     </section>
 
     <!-- GRAPHICS VIEW -->
-    <div id="view-graphics" class="stack" style="margin-top: 16px;">
-      <section class="card narrator" id="narrator-card" aria-label="Pipeline stage">
-        <div class="narrator-top">
-          <ol class="step-list" id="pipeline-steps"></ol>
-          <div class="legend" id="live-legend"></div>
-        </div>
-        <p role="status" class="headline" id="narrator-headline"></p>
-      </section>
-
+    <div id="view-graphics" class="stack" style="margin-top: 14px;">
       <div class="graphics-split">
         <div class="card stage-card">
-          <!-- Top Tier: New Threat -> Agent 1 Security Inspector -->
+          <!-- Tier 1: New Threat -> Agent 1 Security Inspector -->
           <div class="top-tier">
             <div class="agent-box" id="feed-box">
               <div class="avatar-wrap" id="feed-avatar"></div>
@@ -804,16 +777,10 @@
             <svg id="conduits-svg" viewBox="0 0 1000 54" preserveAspectRatio="none" width="100%" height="100%"></svg>
           </div>
 
-          <!-- 5 Monitored Live Servers -->
-          <div style="display:grid;gap:8px;">
-            <div class="eyebrow" style="display:flex;align-items:center;gap:6px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--safe)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <span>Your 5 Live Servers · Protected automatically</span>
-            </div>
-            <div class="vm-grid" id="vm-grid"></div>
-          </div>
+          <!-- Tier 2: 5 Live Servers -->
+          <div class="vm-grid" id="vm-grid"></div>
 
-          <!-- Safe Test Room -->
+          <!-- Tier 3: Simplified 1-Row Safe Test Room -->
           <div id="sandbox-container"></div>
         </div>
 
@@ -913,7 +880,7 @@
 
               <div style="display:grid;gap:8px;border-top:1px solid var(--border);padding-top:10px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                  <span class="eyebrow" id="cfg-hosts-count">Servers to shut down (5/5)</span>
+                  <span class="eyebrow" id="cfg-hosts-count">Critical servers to shut down (1/5)</span>
                   <div style="display:flex;gap:6px;">
                     <button type="button" id="cfg-hosts-all" class="btn btn-outline btn-xs">All</button>
                     <button type="button" id="cfg-hosts-none" class="btn btn-outline btn-xs">None</button>
@@ -946,55 +913,47 @@
   </dialog>
 
   <script>
-    // Two sequential CVEs:
-    // 1) CVE-2024-22195 -> affects Customer Web Portal -> patched in Safe Test Room & attack blocked
-    // 2) CVE-2024-6387  -> Critical 9.8 remote takeover -> affects Remote Access Gateway -> VM automatically shut down!
-    const CVES = {
-      "CVE-2024-22195": {
-        id: "CVE-2024-22195",
-        cvss: 6.1,
-        shortLabel: "CVSS 6.1 · Web injection",
-        severity: "High · CVSS 6.1",
-        critical: false,
-        title: "Allows attackers to inject malicious code into web pages (Jinja2 < 3.1.3)",
-        url: "https://www.cve.org/CVERecord?id=CVE-2024-22195",
-        affectedHost: "web-portal-01.boxd",
-      },
-      "CVE-2024-6387": {
-        id: "CVE-2024-6387",
-        cvss: 9.8,
-        shortLabel: "CVSS 9.8 · Server takeover",
-        severity: "Critical · CVSS 9.8",
-        critical: true,
-        title: "Critical unauthenticated remote server takeover in OpenSSH (regreSSHion)",
-        url: "https://www.cve.org/CVERecord?id=CVE-2024-6387",
-        affectedHost: "ssh-gateway-01.boxd",
-      },
+    // Single critical vulnerability affecting 2 of the 5 VMs:
+    // - ssh-gateway-01.boxd (critical VM selected in Settings) -> shut down immediately!
+    // - web-portal-01.boxd  (unchecked in Settings so it stays online) -> fix actions tested in Safe Test Room & work!
+    const CVE = {
+      id: "CVE-2024-6387",
+      cvss: 9.8,
+      shortLabel: "CVSS 9.8 · Server takeover",
+      severity: "Critical · CVSS 9.8",
+      critical: true,
+      title: "Critical unauthenticated remote server takeover in OpenSSH (regreSSHion)",
+      url: "https://www.cve.org/CVERecord?id=CVE-2024-6387",
+      affectedHosts: ["ssh-gateway-01.boxd", "web-portal-01.boxd"],
     };
+    const CVES = { [CVE.id]: CVE };
 
     let criticalityThreshold = 9.0; // configurable in the Settings tab (null = off)
-    // 5 monitored live servers
+
+    // 5 monitored live servers (2 affected by CVE-2024-6387, 3 safe)
     const SERVERS = [
-      { host: "edge-proxy-01.boxd",  role: "Public Web Router",     os: "Ubuntu 24.04 LTS", npkg: 412, ports: ["80/tcp", "443/tcp"], stack: "nginx 1.24 · OpenSSH 9.8p1" },
-      { host: "web-portal-01.boxd",  role: "Customer Web Portal",   os: "Ubuntu 22.04 LTS", npkg: 684, ports: ["443/tcp", "8000/tcp"], stack: "Flask + Jinja2 3.1.2 · OpenSSH 9.8p1",
-        clone: "wdt-portal-01", snap: "wd-snap-portal01", atk: "wdx-atk-portal01", service: "gunicorn-portal.service", port: 8000 },
-      { host: "ssh-gateway-01.boxd", role: "Remote Access Gateway", os: "Debian 12.5",      npkg: 468, ports: ["22/tcp"],             stack: "OpenSSH 9.2p1 unpatched on 0.0.0.0:22",
+      { host: "edge-proxy-01.boxd",  role: "Public Web Router",     os: "Ubuntu 24.04 LTS", npkg: 412, ports: ["80/tcp", "443/tcp"], stack: "nginx 1.24 · OpenSSH 9.8p1 (patched)" },
+      { host: "ssh-gateway-01.boxd", role: "Remote Access Gateway", os: "Debian 12.5",      npkg: 468, ports: ["22/tcp"],            stack: "OpenSSH 9.2p1 vulnerable · Critical gateway VM",
         clone: "wdt-ssh-gw-01", snap: "wd-snap-sshgw01", atk: "wdx-atk-sshgw01", service: "ssh.service", port: 22 },
-      { host: "postgres-pri-01.boxd",role: "Main Database",         os: "Debian 12.7",      npkg: 389, ports: ["5432/tcp"],           stack: "PostgreSQL 16.4 · private network" },
-      { host: "redis-cache-01.boxd", role: "Session Cache",         os: "Alpine 3.20",      npkg: 142, ports: ["6379/tcp"],           stack: "Redis 7.2.5 · musl libc (not vulnerable)" },
+      { host: "web-portal-01.boxd",  role: "Customer Web Portal",   os: "Ubuntu 22.04 LTS", npkg: 684, ports: ["22/tcp", "443/tcp"], stack: "OpenSSH 8.9p1 vulnerable · Customer web app",
+        clone: "wdt-portal-01", snap: "wd-snap-portal01", atk: "wdx-atk-portal01", service: "ssh.service", port: 22 },
+      { host: "postgres-pri-01.boxd",role: "Main Database",         os: "Debian 12.7",      npkg: 389, ports: ["5432/tcp"],          stack: "PostgreSQL 16.4 · OpenSSH 9.8p1 (patched)" },
+      { host: "redis-cache-01.boxd", role: "Session Cache",         os: "Alpine 3.20",      npkg: 142, ports: ["6379/tcp"],          stack: "Redis 7.2.5 · musl libc (not affected)" },
     ];
 
-    let selectedShutdownHosts = new Set(SERVERS.map((s) => s.host));
+    // By default, Remote Access Gateway is marked as a critical VM to shut down immediately when CVSS >= threshold
+    let selectedShutdownHosts = new Set(["ssh-gateway-01.boxd"]);
     const shouldAutoShutdown = (cve, host) =>
       criticalityThreshold !== null && cve.cvss >= criticalityThreshold && selectedShutdownHosts.has(host);
 
     function buildFinding(cveId, srv, extra = {}) {
       const cve = CVES[cveId];
-      const isAffected = cve.affectedHost === srv.host;
+      const isAffected = cve.affectedHosts.includes(srv.host);
 
       if (!isAffected) {
         return {
           cve_id: cveId,
+          cvss: cve.cvss,
           host: srv.host,
           role: srv.role,
           title: cve.title,
@@ -1022,11 +981,11 @@
           confidence: 0.99,
           votes: [
             { model: "gemini-2.5-flash", verdict: "affected", confidence: 0.99, evidence: `${srv.role} (${srv.stack}) is directly exposed to ${cveId} (CVSS ${cve.cvss}).` },
-            { model: "venice:llama-3.3-70b", verdict: "affected", confidence: 0.98, evidence: `Confirmed vulnerable version and reachable port on ${srv.host}.` },
+            { model: "venice:llama-3.3-70b", verdict: "affected", confidence: 0.98, evidence: `Confirmed vulnerable OpenSSH version reachable on port 22 of ${srv.host}.` },
           ],
           actions: [
-            `Immediate containment: boxd machine stop ${srv.host.replace(".boxd", "")} (executed automatically — CVSS ${cve.cvss} >= threshold ${criticalityThreshold})`,
-            "Patch or rebuild server image offline before starting the VM back up",
+            `Immediate containment: boxd machine stop ${srv.host.replace(".boxd", "")} (executed automatically — CVSS ${cve.cvss} >= threshold ${criticalityThreshold} & critical VM selected)`,
+            "Upgrade openssh-server offline before starting the VM back up",
           ],
           remediation: {
             status: "auto_shutdown",
@@ -1039,44 +998,6 @@
         };
       }
 
-      if (cveId === "CVE-2024-22195") {
-        return {
-          cve_id: cveId,
-          cvss: cve.cvss,
-          host: srv.host,
-          role: srv.role,
-          title: cve.title,
-          verdict: "affected",
-          confidence: 0.96,
-          votes: [
-            { model: "gemini-2.5-flash", verdict: "affected", confidence: 0.97, evidence: "Jinja2 3.1.2 (< 3.1.3) is installed and used by gunicorn-portal.service on :8000." },
-            { model: "venice:llama-3.3-70b", verdict: "affected", confidence: 0.95, evidence: "Exposed web portal renders templates with vulnerable Jinja2 3.1.2." },
-          ],
-          actions: [
-            "pip install --upgrade 'Jinja2>=3.1.3'",
-            "systemctl restart gunicorn-portal.service",
-          ],
-          remediation: {
-            status: extra.fixVerified ? "passed" : "running",
-            clone: srv.clone,
-            snapshot: srv.snap,
-            commands: [
-              { cmd: "pip install --break-system-packages --upgrade 'Jinja2==3.1.4'", rc: 0, out: "Successfully installed Jinja2-3.1.4" },
-              { cmd: "systemctl restart gunicorn-portal.service && systemctl is-active gunicorn-portal.service", rc: 0, out: "active" },
-            ],
-          },
-          exploit: {
-            status: extra.pocBlocked ? "patched" : "running",
-            attacker: srv.atk,
-            saved_path: "exploits/CVE-2024-22195_poc.py",
-            notes: "Simulated attribute-injection payload rejected with HTTP 400 after Jinja2 upgrade.",
-            output: "[Test Attack] Sending payload to Copy of Customer Web Portal\n[Test Attack] HTTP 400 — Injection rejected\n[RESULT] ATTACK BLOCKED — fix proven safe",
-          },
-          autoShutdown: false,
-        };
-      }
-
-      // CVE-2024-6387 when threshold is disabled ("Off") — falls back to Safe Test Room
       return {
         cve_id: cveId,
         cvss: cve.cvss,
@@ -1084,28 +1005,31 @@
         role: srv.role,
         title: cve.title,
         verdict: "affected",
-        confidence: 0.99,
+        confidence: 0.97,
         votes: [
-          { model: "gemini-2.5-flash", verdict: "affected", confidence: 0.99, evidence: "OpenSSH 9.2p1 on glibc Debian 12.5 is publicly reachable on 0.0.0.0:22 (CVSS 9.8 unauthenticated root RCE)." },
-          { model: "venice:llama-3.3-70b", verdict: "affected", confidence: 0.98, evidence: "Critical regreSSHion signal-handler race condition exposed directly to internet traffic on port 22." },
+          { model: "gemini-2.5-flash", verdict: "affected", confidence: 0.98, evidence: `Vulnerable OpenSSH sshd exposed on ${srv.host} (${srv.role}); server kept online per Settings to test fix in Safe Test Room.` },
+          { model: "venice:llama-3.3-70b", verdict: "affected", confidence: 0.96, evidence: `Confirmed unpatched OpenSSH package on ${srv.host}; upgrade available via apt.` },
         ],
         actions: [
-          "Upgrade OpenSSH to >= 9.8p1 or patched Debian backport immediately",
+          "sudo -n apt-get update && sudo -n apt-get install --only-upgrade -y openssh-server",
+          "sudo -n systemctl restart ssh.service",
         ],
         remediation: {
-          status: "failed",
+          status: extra.fixVerified ? "passed" : "running",
           clone: srv.clone,
           snapshot: srv.snap,
           commands: [
-            { cmd: "apt-get update && apt-cache policy openssh-server", rc: 0, out: "Candidate: 1:9.2p1-2+deb12u2 (patched build not yet mirrored)" },
+            { cmd: "sudo -n apt-get update && sudo -n apt-get install --only-upgrade -y openssh-server", rc: 0, out: "Setting up openssh-server (1:9.8p1-1) ... ok" },
+            { cmd: "sudo -n systemctl restart ssh.service && systemctl is-active ssh.service", rc: 0, out: "active" },
           ],
         },
         exploit: {
-          status: "vulnerable",
+          status: extra.pocBlocked ? "patched" : "running",
           attacker: srv.atk,
-          saved_path: "exploits/CVE-2024-6387_poc.py",
-          notes: "Critical remote root takeover succeeded on the test copy (auto-shutdown threshold was turned off in Settings).",
-          output: "[Test Attack] Probing sshd signal-handler race on Copy of Remote Access Gateway:22\n[CRITICAL] Race condition triggered — unauthenticated root shell possible!",
+          reused_poc: Boolean(extra.reusedPoc),
+          saved_path: `exploits/${cveId}_poc.py`,
+          notes: "Simulated regreSSHion signal-handler race against the updated server copy; connection cleanly rejected and OpenSSH 9.8p1 held.",
+          output: `[Test Attack] Probing sshd signal-handler race on Copy of ${srv.role}:22\n[Test Attack] Banner SSH-2.0-OpenSSH_9.8p1 — race condition mitigated\n[RESULT] ATTACK BLOCKED — fix actions verified and safe to apply`,
         },
         autoShutdown: false,
       };
@@ -1113,71 +1037,65 @@
 
     function buildTimeline() {
       const ev = [];
-      const push = (cveId, kind, text, host = "", agent = "NEW THREAT") =>
+      const push = (cveId, kind, text, host = "", agent = "NEW CRITICAL THREAT") =>
         ev.push({ id: ev.length + 1, cveId, kind, text, host, agent });
 
-      for (const cve of [CVES["CVE-2024-22195"], CVES["CVE-2024-6387"]]) {
-        const affSrv = SERVERS.find((s) => s.host === cve.affectedHost);
-        const overThreshold = shouldAutoShutdown(cve, affSrv.host);
-        const tag = cve.critical ? "NEW CRITICAL THREAT" : "NEW THREAT";
-        push(
-          cve.id,
-          "arrived",
-          `${cve.critical ? "URGENT: Critical threat" : "New security threat"} ${cve.id} (CVSS ${cve.cvss}) arrived. Waking up Agent 1 to check all 5 servers.`,
-          "",
-          tag
-        );
+      push(
+        CVE.id,
+        "arrived",
+        `Critical vulnerability ${CVE.id} (CVSS ${CVE.cvss}) arrived! Waking up Agent 1 to check all 5 servers.`,
+        "",
+        "NEW CRITICAL THREAT"
+      );
 
-        for (const srv of SERVERS) {
-          push(cve.id, "judging", `Agent 1 is currently working at ${srv.host} (${srv.role}) to evaluate if ${cve.id} affects it.`, srv.host, "AGENT 1 · SECURITY INSPECTOR");
-          if (srv.host === cve.affectedHost) {
-            push(cve.id, "verdict_affected", `Agent 1 found that ${srv.host} (${srv.role}) is affected by ${cve.id} (CVSS ${cve.cvss}).`, srv.host, "AGENT 1 · SECURITY INSPECTOR");
-            if (overThreshold) {
-              push(
-                cve.id,
-                "auto_shutdown",
-                `EMERGENCY ACTION: ${cve.id} criticality (CVSS ${cve.cvss}) meets your threshold (≥ ${criticalityThreshold}) — ${srv.host} (${srv.role}) was shut down immediately!`,
-                srv.host,
-                "AUTO-PROTECTION"
-              );
-            }
+      const sandboxTargets = [];
+      const shutdownTargets = [];
+
+      for (const srv of SERVERS) {
+        push(CVE.id, "judging", `Agent 1 is currently working at ${srv.host} (${srv.role}) to evaluate if ${CVE.id} affects it.`, srv.host, "AGENT 1 · SECURITY INSPECTOR");
+        if (CVE.affectedHosts.includes(srv.host)) {
+          push(CVE.id, "verdict_affected", `Agent 1 found that ${srv.host} (${srv.role}) is affected by ${CVE.id} (CVSS ${CVE.cvss}).`, srv.host, "AGENT 1 · SECURITY INSPECTOR");
+          if (shouldAutoShutdown(CVE, srv.host)) {
+            shutdownTargets.push(srv);
+            push(
+              CVE.id,
+              "auto_shutdown",
+              `EMERGENCY ACTION: ${CVE.id} is critical (CVSS ${CVE.cvss} ≥ ${criticalityThreshold}) and ${srv.role} is marked as a critical VM — ${srv.host} was shut down immediately!`,
+              srv.host,
+              "AUTO-PROTECTION"
+            );
           } else {
-            push(cve.id, "verdict_safe", `Agent 1 confirmed that ${srv.host} (${srv.role}) is safe from ${cve.id}.`, srv.host, "AGENT 1 · SECURITY INSPECTOR");
+            sandboxTargets.push(srv);
           }
+        } else {
+          push(CVE.id, "verdict_safe", `Agent 1 confirmed that ${srv.host} (${srv.role}) is safe and not affected by ${CVE.id}.`, srv.host, "AGENT 1 · SECURITY INSPECTOR");
         }
+      }
 
-        push(
-          cve.id,
-          "jury_done",
-          overThreshold
-            ? `Agent 1 finished all 5 servers for ${cve.id}: ${affSrv.role} was shut down immediately (CVSS ${cve.cvss} ≥ ${criticalityThreshold}); 4 servers are safe.`
-            : `Agent 1 finished checking all 5 servers for ${cve.id}: 1 affected (${affSrv.role}), 4 safe.`,
-          "",
-          "AGENT 1 · SECURITY INSPECTOR"
-        );
+      push(
+        CVE.id,
+        "jury_done",
+        `Agent 1 finished checking all 5 servers: 2 affected (${shutdownTargets.length} shut down immediately, ${sandboxTargets.length} queued for Safe Test Room), 3 safe.`,
+        "",
+        "AGENT 1 · SECURITY INSPECTOR"
+      );
 
-        // Only run Safe Test Room when the affected server was NOT immediately shut down
-        if (!overThreshold) {
-          if (cve.id === "CVE-2024-22195") {
-            push(cve.id, "snapshot", `Agent 2 is taking a safe backup of ${affSrv.host} so the live server stays untouched.`, affSrv.host, "AGENT 2 · FIX TESTER");
-            push(cve.id, "clone", `Agent 2 created a temporary copy of ${affSrv.host} inside the safe test room.`, affSrv.host, "AGENT 2 · FIX TESTER");
-            push(cve.id, "patch", `Agent 2 is currently installing the software update on ${affSrv.host}'s temporary copy.`, affSrv.host, "AGENT 2 · FIX TESTER");
-            push(cve.id, "fix_done", `Agent 2 verified that ${affSrv.host}'s temporary copy is updated and all services are running normally.`, affSrv.host, "AGENT 2 · FIX TESTER");
-            push(cve.id, "poc_gen", `Agent 3 is currently creating a simulated attack for ${cve.id}.`, affSrv.host, "AGENT 3 · ATTACK SIMULATOR");
-            push(cve.id, "attacker", `Agent 3 started an isolated test attacker inside the safe test room.`, affSrv.host, "AGENT 3 · ATTACK SIMULATOR");
-            push(cve.id, "attack", `Agent 3 is currently trying the simulated attack against ${affSrv.host}'s updated copy.`, affSrv.host, "AGENT 3 · ATTACK SIMULATOR");
-            push(cve.id, "poc_done", `Agent 3 confirmed the attack was blocked on ${affSrv.host}'s updated copy — the fix works.`, affSrv.host, "AGENT 3 · ATTACK SIMULATOR");
-            push(cve.id, "cleanup", `Safe test room deleted the temporary copies used for ${affSrv.host}. Live server stayed online.`, affSrv.host, "SAFE TEST ROOM");
-          } else {
-            push(cve.id, "snapshot", `Agent 2 created a temporary copy of ${affSrv.host} in the safe test room.`, affSrv.host, "AGENT 2 · FIX TESTER");
-            push(cve.id, "fix_failed", `Agent 2 found no safe live update is available yet for ${affSrv.host}.`, affSrv.host, "AGENT 2 · FIX TESTER");
-            push(cve.id, "poc_gen", `Agent 3 is creating a simulated attack for ${cve.id}.`, affSrv.host, "AGENT 3 · ATTACK SIMULATOR");
-            push(cve.id, "attacker", `Agent 3 started an isolated test attacker inside the safe test room.`, affSrv.host, "AGENT 3 · ATTACK SIMULATOR");
-            push(cve.id, "attack", `Agent 3 is testing the remote-takeover exploit against ${affSrv.host}'s copy.`, affSrv.host, "AGENT 3 · ATTACK SIMULATOR");
-            push(cve.id, "poc_breach", `WARNING: Agent 3 confirmed ${cve.id} breached the test copy (auto-shutdown threshold is currently Off).`, affSrv.host, "AGENT 3 · ATTACK SIMULATOR");
-            push(cve.id, "cleanup", `Safe test room deleted temporary copies.`, affSrv.host, "SAFE TEST ROOM");
-          }
+      let pocGenerated = false;
+      for (const srv of sandboxTargets) {
+        push(CVE.id, "snapshot", `Agent 2 is taking a safe backup of ${srv.host} (${srv.role}) so the live server stays online and untouched.`, srv.host, "AGENT 2 · FIX TESTER");
+        push(CVE.id, "clone", `Agent 2 created a temporary copy of ${srv.host} inside the safe test room.`, srv.host, "AGENT 2 · FIX TESTER");
+        push(CVE.id, "patch", `Agent 2 is installing the OpenSSH security update on ${srv.host}'s temporary copy.`, srv.host, "AGENT 2 · FIX TESTER");
+        push(CVE.id, "fix_done", `Agent 2 verified that ${srv.host}'s temporary copy is updated and all services are running normally.`, srv.host, "AGENT 2 · FIX TESTER");
+        if (!pocGenerated) {
+          push(CVE.id, "poc_gen", `Agent 3 is creating a simulated attack for ${CVE.id}.`, srv.host, "AGENT 3 · ATTACK SIMULATOR");
+          pocGenerated = true;
+        } else {
+          push(CVE.id, "poc_reuse", `Agent 3 is reusing the ${CVE.id} simulated attack already created to test ${srv.host}'s updated copy.`, srv.host, "AGENT 3 · ATTACK SIMULATOR");
         }
+        push(CVE.id, "attacker", `Agent 3 started an isolated test attacker inside the safe test room.`, srv.host, "AGENT 3 · ATTACK SIMULATOR");
+        push(CVE.id, "attack", `Agent 3 is testing the simulated attack against ${srv.host}'s updated copy.`, srv.host, "AGENT 3 · ATTACK SIMULATOR");
+        push(CVE.id, "poc_done", `Agent 3 confirmed the attack was blocked on ${srv.host}'s updated copy — the fix actions work!`, srv.host, "AGENT 3 · ATTACK SIMULATOR");
+        push(CVE.id, "cleanup", `Safe test room deleted the temporary copies used for ${srv.host}. Live server remained online.`, srv.host, "SAFE TEST ROOM");
       }
 
       return ev;
@@ -1189,6 +1107,7 @@
     let timer = null;
     let activeTab = "graphics";
     let manualCveId = null;
+    let selectedSandboxHost = null;
 
     function deriveState() {
       const slice = cursor >= 0 ? TIMELINE.slice(0, cursor + 1) : [];
@@ -1197,18 +1116,15 @@
       const lastEvent = slice[slice.length - 1] || null;
 
       const seenCveIds = [...new Set(slice.map((e) => e.cveId))];
-      const latestCveId = lastEvent?.cveId || "CVE-2024-22195";
-      // During live playback, always follow the active CVE; when paused/finished, allow clicking between CVE tabs
-      const activeCveId = (!running && manualCveId && seenCveIds.includes(manualCveId)) ? manualCveId : latestCveId;
-      const activeCve = CVES[activeCveId];
+      const activeCveId = CVE.id;
+      const activeCve = CVE;
       const cveArrived = seenCveIds.length > 0;
 
-      // Global cross-CVE server facts up to `cursor`
-      const portalFixed = slice.some((e) => e.cveId === "CVE-2024-22195" && e.kind === "poc_done");
       const shutdownHostsSet = new Set(slice.filter((e) => e.kind === "auto_shutdown").map((e) => e.host));
-
-      const cveSlice = slice.filter((e) => e.cveId === activeCveId);
+      const cveSlice = slice;
       const juryDone = cveSlice.some((e) => e.kind === "jury_done");
+
+      const firstPocHost = cveSlice.find((e) => e.kind === "poc_gen")?.host || null;
 
       const vmStates = SERVERS.map((srv) => {
         const hostEvs = cveSlice.filter((e) => e.host === srv.host);
@@ -1216,6 +1132,7 @@
         let fixVerified = false;
         let pocBlocked = false;
         let shutDown = false;
+        let reusedPoc = false;
 
         for (const e of hostEvs) {
           if (e.kind === "judging") state = "judging";
@@ -1223,95 +1140,108 @@
           if (e.kind === "verdict_affected") state = "affected";
           if (e.kind === "fix_done") fixVerified = true;
           if (e.kind === "poc_done") pocBlocked = true;
+          if (e.kind === "poc_reuse") reusedPoc = true;
           if (e.kind === "auto_shutdown") { state = "shutdown"; shutDown = true; }
         }
 
         const done = state === "affected" || state === "not_affected" || state === "shutdown";
-        const finding = done ? buildFinding(activeCveId, srv, { fixVerified, pocBlocked, shutDown }) : null;
+        const finding = done ? buildFinding(activeCveId, srv, { fixVerified, pocBlocked, shutDown, reusedPoc }) : null;
         return {
           ...srv,
           state,
           fixVerified,
           pocBlocked,
           shutDown,
-          priorPortalFix: activeCveId === "CVE-2024-6387" && srv.host === "web-portal-01.boxd" && portalFixed,
+          priorPortalFix: false,
           globalShutDown: shutdownHostsSet.has(srv.host),
           finding,
         };
       });
 
-      // Containment vs Safe Test Room for the active CVE's affected server
-      const targetSrv = SERVERS.find((s) => s.host === activeCve.affectedHost);
-      const targetVmNode = vmStates.find((v) => v.host === targetSrv.host);
-      const containment = targetVmNode?.state === "shutdown"
-        ? { srv: targetSrv, cve: activeCve, threshold: criticalityThreshold }
+      // 1) Immediate Auto-Shutdown containment banner for any affected critical VM(s) shut down immediately
+      const shutVms = vmStates.filter((v) => v.state === "shutdown");
+      const containment = shutVms.length > 0
+        ? { srvs: shutVms, cve: activeCve, threshold: criticalityThreshold }
         : null;
 
-      const sbEvs = cveSlice.filter((e) => e.host === targetSrv.host && !["judging", "verdict_safe", "verdict_affected", "auto_shutdown"].includes(e.kind));
-      const showSandbox = !containment && targetVmNode && (targetVmNode.state === "affected" || sbEvs.length > 0) && !shouldAutoShutdown(activeCve, targetSrv.host);
+      // 2) Safe Test Room for any affected VM(s) NOT shut down immediately (where fix actions are tested & work!)
+      const sandboxCandidates = SERVERS.filter(
+        (s) => activeCve.affectedHosts.includes(s.host) && !shouldAutoShutdown(activeCve, s.host)
+      );
+      const activeSbCandidate = sandboxCandidates.find((s) => s.host === lastEvent?.host && !["judging", "verdict_safe", "verdict_affected"].includes(lastEvent?.kind));
+      const focusSbSrv = sandboxCandidates.find((s) => s.host === selectedSandboxHost) || activeSbCandidate || sandboxCandidates[0] || null;
 
       let sandbox = null;
-      if (showSandbox) {
-        let patchState = "queued", expState = "standby", pocStatus = "idle", atkSpawned = false, breached = false, shutDown = false, destroyed = false;
-        for (const e of sbEvs) {
-          if (e.kind === "snapshot" || e.kind === "clone") patchState = "copying";
-          if (e.kind === "patch") patchState = "patching";
-          if (e.kind === "fix_done") patchState = "passed";
-          if (e.kind === "fix_failed") patchState = "no_fix";
-          if (e.kind === "poc_gen") { expState = "coding_poc"; pocStatus = "writing"; }
-          if (e.kind === "attacker") { expState = "spawning_vm"; pocStatus = "ready"; atkSpawned = true; }
-          if (e.kind === "attack") { expState = "attacking"; pocStatus = "ready"; atkSpawned = true; }
-          if (e.kind === "poc_done") { expState = "patched"; pocStatus = "ready"; atkSpawned = true; }
-          if (e.kind === "poc_breach") { expState = "breached"; pocStatus = "ready"; atkSpawned = true; breached = true; }
-          if (e.kind === "cleanup") { destroyed = true; }
+      if (focusSbSrv) {
+        const focusNode = vmStates.find((v) => v.host === focusSbSrv.host);
+        const sbEvs = cveSlice.filter((e) => e.host === focusSbSrv.host && !["judging", "verdict_safe", "verdict_affected", "auto_shutdown"].includes(e.kind));
+        if (focusNode && (focusNode.state === "affected" || sbEvs.length > 0)) {
+          let patchState = "queued", expState = "standby", pocStatus = "idle", reusedPoc = false, atkSpawned = false, breached = false, destroyed = false;
+          for (const e of sbEvs) {
+            if (e.kind === "snapshot" || e.kind === "clone") patchState = "copying";
+            if (e.kind === "patch") patchState = "patching";
+            if (e.kind === "fix_done") patchState = "passed";
+            if (e.kind === "poc_gen") { expState = "coding_poc"; pocStatus = "writing"; }
+            if (e.kind === "poc_reuse") { expState = "reusing_poc"; pocStatus = "reused"; reusedPoc = true; }
+            if (e.kind === "attacker") { expState = "spawning_vm"; pocStatus = reusedPoc ? "reused" : "ready"; atkSpawned = true; }
+            if (e.kind === "attack") { expState = "attacking"; pocStatus = reusedPoc ? "reused" : "ready"; atkSpawned = true; }
+            if (e.kind === "poc_done") { expState = "patched"; pocStatus = reusedPoc ? "reused" : "ready"; atkSpawned = true; }
+            if (e.kind === "cleanup") { destroyed = true; }
+          }
+          sandbox = {
+            srv: focusSbSrv,
+            candidates: sandboxCandidates,
+            cve: activeCve,
+            patchState,
+            expState,
+            pocStatus,
+            reusedPoc: reusedPoc || (firstPocHost !== null && firstPocHost !== focusSbSrv.host),
+            atkSpawned,
+            breached,
+            shutDown: false,
+            destroyed,
+          };
         }
-        sandbox = { srv: targetSrv, cve: activeCve, patchState, expState, pocStatus, atkSpawned, breached, shutDown, destroyed };
       }
 
       let stage = 0;
       if (cveSlice.length > 0) {
-        if (containment) stage = 4;
-        else if (sandbox && sandbox.expState !== "standby") stage = 4;
-        else if (sandbox || juryDone) stage = 3;
+        if (sandbox && sandbox.expState !== "standby") stage = 4;
+        else if (sandbox || (containment && juryDone)) stage = sandbox ? 3 : 4;
         else if (cveSlice.length > 1) stage = 2;
         else stage = 1;
       }
 
       // Narrator headline & tone
-      let headline = "All 5 live servers are monitored and healthy. Click “Simulate CVE arrival” to watch two security threats arrive.";
+      let headline = "All 5 live servers are monitored and healthy. Click “Simulate CVE arrival” to watch how a critical vulnerability is handled.";
       let narratorTone = "";
 
       if (cveArrived && !finished && lastEvent) {
         headline = lastEvent.text;
-        if (lastEvent.kind === "auto_shutdown" || lastEvent.kind === "poc_breach") narratorTone = "contained";
+        if (lastEvent.kind === "auto_shutdown") narratorTone = "contained";
       } else if (finished) {
-        if (containment) {
-          narratorTone = "contained";
-          headline = shutdownHostsSet.size === 2
-            ? `Both threats exceeded your threshold (CVSS ≥ ${criticalityThreshold}): Customer Web Portal and Remote Access Gateway were both shut down immediately.`
-            : `Both threats handled: Customer Web Portal has a verified fix ready (CVE-2024-22195, CVSS 6.1), and Remote Access Gateway was shut down immediately because CVE-2024-6387 (CVSS 9.8) exceeded your threshold (≥ ${criticalityThreshold}).`;
-        } else if (activeCveId === "CVE-2024-22195") {
+        if (shutVms.length > 0 && sandbox) {
           narratorTone = "safe";
-          headline = "Threat 1 handled: Customer Web Portal's update was tested on a temporary copy, kept all services running, and blocked a simulated attack.";
-        } else {
+          headline = `${CVE.id} (CVSS ${CVE.cvss}) handled across 2 affected servers: ${shutVms.map((s) => s.role).join(", ")} was shut down immediately due to criticality, while ${sandboxCandidates.map((s) => s.role).join(", ")} stayed online and its fix actions were tested and proven to work.`;
+        } else if (shutVms.length > 0) {
           narratorTone = "contained";
-          headline = criticalityThreshold === null
-            ? "Auto-shutdown threshold is Off in Settings: Remote Access Gateway remained online while Agent 3 confirmed CVE-2024-6387 breached its test copy."
-            : "Remote Access Gateway is unchecked in Settings (excluded from auto-shutdown): it stayed online while Agent 3 confirmed CVE-2024-6387 breached its test copy.";
+          headline = `${CVE.id} (CVSS ${CVE.cvss}) exceeded your threshold (≥ ${criticalityThreshold}): ${shutVms.map((s) => s.role).join(" & ")} ${shutVms.length > 1 ? "were" : "was"} shut down immediately; the other 3 servers are safe.`;
+        } else {
+          narratorTone = "safe";
+          headline = `${CVE.id} handled: Fix actions were tested and verified in the Safe Test Room for both affected servers; the other 3 servers are safe.`;
         }
       }
 
-      // Build all completed findings across seen CVEs for the Dashboard tab
+      // Completed findings for Dashboard tab
       const allFindings = [];
-      for (const id of [...seenCveIds].reverse()) {
-        const sub = slice.filter((e) => e.cveId === id);
+      if (cveArrived) {
         for (const srv of SERVERS) {
-          const hEvs = sub.filter((e) => e.host === srv.host);
-          const hasVerdict = hEvs.some((e) => e.kind === "verdict_safe" || e.kind === "verdict_affected");
-          if (hasVerdict) {
-            allFindings.push(buildFinding(id, srv, {
+          const hEvs = cveSlice.filter((e) => e.host === srv.host);
+          if (hEvs.some((e) => e.kind === "verdict_safe" || e.kind === "verdict_affected")) {
+            allFindings.push(buildFinding(activeCveId, srv, {
               fixVerified: hEvs.some((e) => e.kind === "fix_done"),
               pocBlocked: hEvs.some((e) => e.kind === "poc_done"),
+              reusedPoc: hEvs.some((e) => e.kind === "poc_reuse"),
               shutDown: hEvs.some((e) => e.kind === "auto_shutdown"),
             }));
           }
@@ -1372,76 +1302,16 @@
     function render() {
       const st = deriveState();
 
-      // Controls
-      const triggerBtn = document.getElementById("btn-trigger");
-      triggerBtn.textContent = st.running ? "Running simulation…" : st.cveArrived ? "Replay simulation" : "Simulate CVE arrival";
-      triggerBtn.disabled = st.running;
-
-      const pauseBtn = document.getElementById("btn-pause");
-      pauseBtn.hidden = !st.cveArrived || st.finished;
-      pauseBtn.textContent = st.running ? "Pause" : "Resume";
-
-      const elapsedSec = st.cveArrived
-        ? Math.round((cursor / Math.max(1, TIMELINE.length - 1)) * (SIMULATION_DURATION_MS / 1000))
-        : 0;
-      document.getElementById("step-counter").textContent = st.cveArrived
-        ? `Step ${cursor + 1} / ${TIMELINE.length} · ${elapsedSec}s / 30s${st.finished ? " · Complete" : ""}`
-        : "Standby · 5 servers monitored";
-
-      // Arrived CVE selector pills
+      // Active CVE badge
       const cveTabsEl = document.getElementById("cve-tabs");
-      if (!st.seenCveIds.length) {
-        cveTabsEl.innerHTML = `<span class="cve-tab"><span class="dot"></span>Waiting for threats…</span>`;
-      } else {
-        cveTabsEl.innerHTML = st.seenCveIds.map((id, idx) => {
-          const c = CVES[id];
-          const isSel = id === st.activeCveId;
-          const dotColor = c.critical ? "var(--affected)" : "var(--primary)";
-          return `
-            <button type="button" role="tab" aria-selected="${isSel}" data-cve-tab="${id}"
-                    class="cve-tab ${c.critical ? "critical" : ""} ${isSel ? "active" : ""}">
-              <span class="dot ${st.running && isSel ? "pulse" : ""}" style="color:${dotColor}"></span>
-              <strong>Threat ${idx + 1}: ${c.id}</strong>
-              <span style="font-size:11px;opacity:0.82;">${c.shortLabel}</span>
-            </button>`;
-        }).join("");
-      }
+      cveTabsEl.innerHTML = `
+        <span class="cve-tab critical active">
+          <span class="dot ${st.running ? "pulse" : ""}" style="color:var(--affected)"></span>
+          <strong>${CVE.id}</strong>
+          <span style="font-size:11px;opacity:0.85;">${CVE.severity}</span>
+        </span>`;
 
-      const threshPill = document.getElementById("btn-threshold-pill");
-      threshPill.textContent = criticalityThreshold !== null
-        ? `Auto-shutdown: CVSS ≥ ${criticalityThreshold.toFixed(1)} · ${selectedShutdownHosts.size}/5 servers`
-        : "Auto-shutdown: Off";
-      threshPill.className = `badge ${criticalityThreshold !== null && selectedShutdownHosts.size > 0 ? "badge-likely" : "badge-muted"}`;
-
-      // Pipeline steps
-      const stepsDef = [
-        { n: "01", label: "New Threat" },
-        { n: "02", label: "Agent 1 · Check 5 Servers" },
-        { n: "03", label: "Agent 2 · Test Fix" },
-        { n: "04", label: st.containment ? "Auto-Shut Down VM" : "Agent 3 · Simulate Attack" },
-      ];
-      document.getElementById("pipeline-steps").innerHTML = stepsDef.map((s, i) => {
-        const num = i + 1;
-        const done = st.stage > num || (st.stage === num && st.finished);
-        const cur = st.stage === num && !st.finished;
-        const cls = num === 4 && st.containment ? "warn" : (num === 3 && st.containment) ? "" : cur ? "active" : done ? "done" : "";
-        return `<li class="step-chip ${cls}"><span style="opacity:.7">${s.n}</span><span>${s.label}</span></li>`;
-      }).join("");
-
-      const safeCount = st.vmStates.filter((v) => v.state === "not_affected").length;
-      const affCount = st.vmStates.filter((v) => v.state === "affected").length;
-      const shutCount = st.vmStates.filter((v) => v.state === "shutdown").length;
-      document.getElementById("live-legend").innerHTML = `
-        <span><i class="dot" style="color: var(--safe)"></i>Safe (${safeCount})</span>
-        <span><i class="dot" style="color: var(--affected)"></i>Affected (${affCount})</span>
-        <span><i class="dot" style="color: var(--likely)"></i>Shut down (${shutCount})</span>`;
-
-      document.getElementById("narrator-card").className = `card narrator ${st.narratorTone}`;
-      document.getElementById("narrator-headline").innerHTML = st.finished
-        ? `<span style="display:inline-flex;align-items:flex-start;gap:8px;"><span style="color:${st.narratorTone === "contained" ? "var(--likely)" : "var(--safe)"};font-weight:700;">${st.narratorTone === "contained" ? "⏻" : "✓"}</span><span>${st.headline}</span></span>`
-        : st.headline;
-
-      // Top tier: Threat Feed -> Agent 1
+      // Tier 1: New Threat -> Agent 1
       const juryActive = st.cveArrived && !st.juryDone;
       const isCrit = st.cveArrived && st.activeCve.critical;
       document.getElementById("feed-box").className = `agent-box ${isCrit ? "critical" : st.cveArrived ? "active" : ""}`;
@@ -1469,7 +1339,7 @@
       document.getElementById("jury-badge").innerHTML = judgingVm
         ? `<span class="badge badge-cyan"><span class="dot pulse"></span>Checking ${judgingVm.role}</span>`
         : st.juryDone
-          ? `<span class="badge badge-safe">All 5 Checked</span>`
+          ? `<span class="badge badge-safe">Done</span>`
           : st.cveArrived
             ? `<span class="badge badge-cyan">Starting</span>`
             : `<span class="badge badge-muted">Standby</span>`;
@@ -1478,8 +1348,10 @@
       document.getElementById("conduits-svg").innerHTML = st.vmStates.map((vm, col) => {
         const x = ((col + 0.5) / 5) * 1000;
         const active = vm.state === "judging";
+        const verified = vm.fixVerified && vm.pocBlocked;
         const color = active ? "#22d3ee"
           : vm.state === "shutdown" ? "#fbbf24"
+          : verified ? "#34d399"
           : vm.state === "affected" ? "#fb7185"
           : vm.state === "not_affected" ? "#34d399" : "#1e2b40";
         const d = `M 500 0 C 500 28, ${x} 22, ${x} 52`;
@@ -1487,227 +1359,121 @@
                 <circle cx="${x}" cy="51" r="${active ? 4.5 : 3}" fill="${color}"/>`;
       }).join("");
 
-      // 5 Server Nodes
-      const badgeMap = {
-        idle: ["badge-muted", "Standby"],
-        judging: ["badge-cyan", "Checking"],
-        not_affected: ["badge-safe", "Safe"],
-        affected: ["badge-affected", "Affected"],
-        shutdown: ["badge-likely", "⏻ Shut down"],
-      };
+      // Tier 2: 5 Clean Server Cards (3 elements each: badge, icon, name)
       document.getElementById("vm-grid").innerHTML = st.vmStates.map((vm, idx) => {
-        const [bCls, bLbl] = badgeMap[vm.state];
-        const tagList = [];
-        if (vm.fixVerified) tagList.push('<span class="badge badge-safe">Fix tested</span>');
-        if (vm.pocBlocked) tagList.push('<span class="badge badge-safe">Attack blocked</span>');
-        if (vm.priorPortalFix) tagList.push('<span class="badge badge-safe">Threat 1 fix ready</span>');
-        if (vm.shutDown) {
-          tagList.push('<span class="badge badge-likely">Auto-shut down</span>');
-          tagList.push('<span class="badge badge-safe">Exploit contained</span>');
-        }
-        const tags = tagList.length ? `<div class="vm-tags">${tagList.join("")}</div>` : "";
+        const verified = vm.fixVerified && vm.pocBlocked;
+        const visualState = verified ? "not_affected" : vm.state;
+        const [bCls, bLbl] = vm.state === "idle" ? ["badge-muted", "Standby"]
+          : vm.state === "judging" ? ["badge-cyan", "Checking"]
+          : vm.state === "not_affected" ? ["badge-safe", "Safe"]
+          : vm.state === "shutdown" ? ["badge-likely", "⏻ Shut down"]
+          : verified ? ["badge-safe", "Fix verified"]
+          : ["badge-affected", "Affected"];
+        const caption = vm.state === "shutdown"
+          ? `CVSS ${CVE.cvss} ≥ ${criticalityThreshold.toFixed(1)}`
+          : vm.host;
 
         return `
-          <div class="vm-node state-${vm.state} ${vm.finding ? "clickable" : ""}"
-               ${vm.finding ? `role="button" tabindex="0" data-inspect-cve="${st.activeCveId}" data-inspect-idx="${idx}"` : ""}>
+          <div class="vm-node state-${visualState} ${vm.finding ? "clickable" : ""}"
+               ${vm.finding ? `role="button" tabindex="0" title="Click to view report" data-inspect-cve="${st.activeCveId}" data-inspect-idx="${idx}"` : ""}>
             ${vm.state === "judging" ? '<div class="scan-sweep"></div>' : ""}
             <div class="vm-head">
               <span class="badge ${bCls}">${vm.state === "judging" ? '<span class="dot pulse"></span>' : ""}${bLbl}</span>
             </div>
-            ${serverSvg(vm.state)}
+            ${serverSvg(visualState)}
             <div style="min-width:0;display:grid;gap:2px;">
               <strong class="vm-host" title="${vm.role}">${vm.role}</strong>
-              <span class="vm-sub" title="${vm.host}">${vm.host}</span>
+              <span class="vm-sub" title="${caption}">${caption}</span>
             </div>
-            ${tags}
-            ${vm.finding ? '<div class="inspect-hint">View report →</div>' : ""}
           </div>`;
       }).join("");
 
-      // Immediate Containment Banner OR Safe Test Room
+      // Tier 3: Simplified 1-Row Safe Test Room (Agent 2 ──► Temporary Copy ◄── Agent 3)
       const sbContainer = document.getElementById("sandbox-container");
-      if (st.containment) {
-        const { srv, cve, threshold } = st.containment;
-        sbContainer.innerHTML = `
-          <div class="sandbox-wrap">
-            <div class="sandbox-trigger" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
-                <line x1="12" y1="0" x2="12" y2="22" stroke="#fbbf24" stroke-width="2.5"/>
-                <circle cx="12" cy="21" r="3.5" fill="#fbbf24"/>
-              </svg>
-              <span class="sandbox-trigger-pill" style="border-color:rgba(251,191,36,0.55);color:var(--likely);">
-                CVSS ${cve.cvss} ≥ threshold ${threshold.toFixed(1)} → immediate VM shutdown
-              </span>
-            </div>
-            <div class="shutdown-banner" role="alert">
-              <span style="color:var(--likely);font-size:20px;line-height:1;">⏻</span>
-              <div>
-                <div class="eyebrow" style="color:var(--likely);margin-bottom:3px;">Immediate Auto-Shutdown Executed · Safe Test Room Skipped</div>
-                <div>
-                  <strong>${cve.id}</strong> has criticality <strong>CVSS ${cve.cvss}</strong>, which meets or exceeds your configured threshold
-                  (<strong>CVSS ≥ ${threshold.toFixed(1)}</strong>). <strong>${srv.role} (${srv.host})</strong> was shut down immediately to protect your network.
-                </div>
-              </div>
-            </div>
-          </div>`;
-      } else if (!st.sandbox) {
+      if (!st.sandbox) {
         sbContainer.innerHTML = "";
       } else {
         const sb = st.sandbox;
         const patchDone = sb.patchState === "passed";
-        const patchNoFix = sb.patchState === "no_fix";
         const patchBusy = sb.patchState === "copying" || sb.patchState === "patching";
-
         const expBlocked = sb.expState === "patched";
-        const expBreached = sb.expState === "breached";
-        const expBusy = ["coding_poc", "spawning_vm", "attacking"].includes(sb.expState);
+        const expBusy = ["coding_poc", "reusing_poc", "spawning_vm", "attacking"].includes(sb.expState);
 
         const cloneVisual = patchDone ? "not_affected" : patchBusy ? "judging" : "affected";
-        const patchLbl = {
-          queued: "Starting",
-          copying: "Copying server",
-          patching: "Installing update",
-          passed: "Fix tested",
-          no_fix: "No live fix yet",
-        }[sb.patchState];
-        const expLbl = {
-          standby: "Waiting",
-          coding_poc: "Creating attack",
-          spawning_vm: "Starting attacker",
-          attacking: "Testing attack",
-          patched: "Attack blocked",
-          breached: "Critical takeover!",
-        }[sb.expState];
+        const patchLbl = patchDone ? "Fix passed" : patchBusy ? "Updating…" : "Starting";
+        const expLbl = expBlocked ? "Attack blocked" : expBusy ? "Testing…" : "Waiting";
+        const copyLbl = expBlocked ? "🛡️ Attack blocked" : expBusy ? "Under test…" : patchDone ? "Updated" : patchBusy ? "Updating…" : "At risk";
+
+        const sbColIdx = SERVERS.findIndex((s) => s.host === sb.srv.host);
+        const sbX = ((sbColIdx + 0.5) / 5) * 1000;
+
+        const hostSelector = sb.candidates.length > 1
+          ? `<div style="display:flex;gap:6px;">` + sb.candidates.map((c) => `
+              <button type="button" data-sb-host="${c.host}" class="cve-tab ${c.host === sb.srv.host ? "active" : ""}" style="padding:3px 9px;font-size:11px;">
+                ${c.role}
+              </button>`).join("") + `</div>`
+          : "";
 
         sbContainer.innerHTML = `
           <div class="sandbox-wrap">
-            <div class="sandbox-trigger" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
-                <line x1="12" y1="0" x2="12" y2="22" stroke="${sb.shutDown ? "#fbbf24" : "#fb7185"}" stroke-width="2.5" class="${patchBusy || expBusy ? "beam-flow" : ""}"/>
-                <circle cx="12" cy="21" r="3.5" fill="${sb.shutDown ? "#fbbf24" : "#fb7185"}"/>
+            <div class="conduits" aria-hidden="true" style="height:28px;margin:-4px 0;">
+              <svg viewBox="0 0 1000 32" preserveAspectRatio="none" width="100%" height="100%">
+                <path d="M ${sbX} 0 C ${sbX} 18, 500 14, 500 30" fill="none" stroke="${expBlocked ? "#34d399" : "#22d3ee"}" stroke-width="2.2" class="${patchBusy || expBusy ? "beam-flow" : ""}"/>
+                <circle cx="500" cy="30" r="3.5" fill="${expBlocked ? "#34d399" : "#22d3ee"}"/>
               </svg>
-              <span class="sandbox-trigger-pill" style="${sb.shutDown ? "border-color:rgba(251,191,36,0.55);color:var(--likely);" : ""}">
-                ${sb.srv.role} affected → ${sb.shutDown ? "live server shut down automatically" : "testing in safe room"}
-              </span>
             </div>
 
-            <section class="sandbox-box ${sb.cve.critical ? "critical" : ""}" aria-label="Safe test room verification">
+            <section class="sandbox-box" aria-label="Safe test room">
               <div class="sandbox-header">
                 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
-                  <span class="eyebrow" style="color:var(--fg)">Safe Test Room · Temporary copies only (${sb.cve.id})</span>
-                  ${sb.destroyed ? '<span class="badge badge-muted">Temporary copies deleted after test</span>' : ""}
+                  <span class="eyebrow" style="color:var(--fg)">Safe Test Room · Copy of ${sb.srv.role}</span>
+                  ${sb.destroyed ? '<span class="badge badge-muted">Copy deleted after test</span>' : ""}
                 </div>
-                <span class="badge ${sb.cve.critical ? "badge-affected" : "badge-cyan"}">Target: ${sb.srv.role}</span>
+                ${hostSelector}
               </div>
 
-              <div class="sandbox-row-agents">
+              <div class="sandbox-flow">
                 <!-- Agent 2 -->
-                <div class="sb-card ${patchDone ? "safe" : patchNoFix ? "amber" : "cyan"}">
-                  <div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                      <span class="eyebrow" style="color:var(--primary)">Agent 2 · Fix Tester</span>
-                      <span class="badge ${patchDone ? "badge-safe" : patchNoFix ? "badge-likely" : "badge-cyan"}">${patchBusy ? '<span class="dot pulse"></span>' : ""}${patchLbl}</span>
-                    </div>
-                    <p class="agent-desc">Makes a temporary copy of the affected server and tests whether a safe software update exists.</p>
+                <div class="sb-card ${patchDone ? "safe" : "cyan"}">
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                    <span class="eyebrow" style="color:var(--primary)">Agent 2 · Fix Tester</span>
+                    <span class="badge ${patchDone ? "badge-safe" : "badge-cyan"}">${patchBusy ? '<span class="dot pulse"></span>' : ""}${patchLbl}</span>
                   </div>
-                  <ul class="sb-steps">
-                    <li class="sb-step ${sb.patchState !== "queued" ? "done" : ""}"><span class="dot" style="color:${sb.patchState !== "queued" ? "var(--safe)" : "var(--muted-fg)"}"></span>Copy ${sb.srv.role} into safe test room</li>
-                    <li class="sb-step ${patchDone ? "done" : patchNoFix ? "bad" : sb.patchState === "patching" ? "active" : ""}">
-                      <span class="dot" style="color:${patchDone ? "var(--safe)" : patchNoFix ? "var(--likely)" : sb.patchState === "patching" ? "var(--primary)" : "var(--muted-fg)"}"></span>
-                      ${patchNoFix ? "No safe live update available yet" : "Install software update on the copy"}
-                    </li>
-                    <li class="sb-step ${patchDone ? "done" : ""}">
-                      <span class="dot" style="color:${patchDone ? "var(--safe)" : "var(--muted-fg)"}"></span>
-                      ${patchNoFix ? "Escalate to Agent 3 to assess exploit severity" : "Confirm server & services stay healthy"}
-                    </li>
-                  </ul>
+                  <p class="agent-desc">Updates a temporary copy of the server without touching live traffic.</p>
                 </div>
 
-                <!-- Handoff Arrow -->
-                <div class="sandbox-mid-arrow" aria-hidden="true" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">
-                  <span class="eyebrow" style="font-size:9px;color:${patchDone ? "var(--safe)" : patchNoFix ? "var(--likely)" : "var(--muted-fg)"}">${patchDone ? "Fix passed" : patchNoFix ? "Unpatched" : "Next"}</span>
-                  <svg viewBox="0 0 72 22" width="72" height="22" fill="none">
-                    <line x1="2" y1="11" x2="62" y2="11" stroke="${patchDone ? "#34d399" : patchNoFix ? "#fbbf24" : "#1e2b40"}" stroke-width="2.5" class="${expBusy ? "beam-flow" : ""}"/>
-                    <path d="M56 5l8 6-8 6" stroke="${patchDone ? "#34d399" : patchNoFix ? "#fbbf24" : "#1e2b40"}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- Left Arrow: Agent 2 -> Copy -->
+                <div class="sandbox-arrow" aria-hidden="true" style="display:flex;align-items:center;justify-content:center;">
+                  <svg viewBox="0 0 40 20" width="40" height="20" fill="none">
+                    <line x1="2" y1="10" x2="32" y2="10" stroke="${patchDone ? "#34d399" : "#22d3ee"}" stroke-width="2.4" class="${patchBusy ? "beam-flow" : ""}"/>
+                    <path d="M27 5l7 5-7 5" stroke="${patchDone ? "#34d399" : "#22d3ee"}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
-                  <span class="eyebrow" style="font-size:9px;">Tests risk</span>
+                </div>
+
+                <!-- Center: Temporary Server Copy -->
+                <div class="sb-card ${expBlocked || patchDone ? "safe" : patchBusy ? "cyan" : "rose"}" style="text-align:center;align-items:center;">
+                  <span class="badge ${expBlocked || patchDone ? "badge-safe" : patchBusy ? "badge-cyan" : "badge-affected"}">${copyLbl}</span>
+                  <div style="color:${expBlocked || patchDone ? "var(--safe)" : patchBusy ? "var(--primary)" : "var(--affected)"};">${serverSvg(cloneVisual, true)}</div>
+                  <strong style="font-size:12px;">Copy of ${sb.srv.role}</strong>
+                </div>
+
+                <!-- Right Arrow: Copy <- Agent 3 -->
+                <div class="sandbox-arrow" aria-hidden="true" style="display:flex;align-items:center;justify-content:center;">
+                  <svg viewBox="0 0 40 20" width="40" height="20" fill="none">
+                    <line x1="38" y1="10" x2="8" y2="10" stroke="${expBlocked ? "#34d399" : sb.expState === "standby" ? "#1e2b40" : "#fb7185"}" stroke-width="2.4" class="${sb.expState === "attacking" ? "attack-flow" : ""}"/>
+                    <path d="M13 5l-7 5 7 5" stroke="${expBlocked ? "#34d399" : sb.expState === "standby" ? "#1e2b40" : "#fb7185"}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
                 </div>
 
                 <!-- Agent 3 -->
                 <div class="sb-card ${sb.expState === "standby" ? "dim" : expBlocked ? "safe" : "rose"}">
-                  <div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                      <span class="eyebrow" style="color:${sb.expState === "standby" ? "var(--muted-fg)" : "var(--affected)"}">Agent 3 · Attack Simulator</span>
-                      <span class="badge ${sb.expState === "standby" ? "badge-muted" : expBlocked ? "badge-safe" : "badge-affected"}">${expBusy ? '<span class="dot pulse"></span>' : ""}${expLbl}</span>
-                    </div>
-                    <p class="agent-desc">Creates a simulated attack and tests the server copy to measure real-world breach impact.</p>
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                    <span class="eyebrow" style="color:${sb.expState === "standby" ? "var(--muted-fg)" : "var(--affected)"}">Agent 3 · Attack Simulator</span>
+                    <span class="badge ${sb.expState === "standby" ? "badge-muted" : expBlocked ? "badge-safe" : "badge-affected"}">${expBusy ? '<span class="dot pulse"></span>' : ""}${expLbl}</span>
                   </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 9px;border-radius:4px;border:1px solid ${sb.pocStatus === "ready" ? "rgba(251,113,133,0.45)" : "var(--border)"};background:${sb.pocStatus === "ready" ? "rgba(251,113,133,0.1)" : "rgba(8,12,20,0.6)"};font-size:12px;">
-                    <span style="font-weight:500;">Simulated attack (${sb.cve.id})</span>
-                    <span class="eyebrow" style="color:var(--fg);">${sb.pocStatus === "ready" ? "Created" : sb.pocStatus === "writing" ? "Creating…" : "Waiting"}</span>
-                  </div>
-                  <ul class="sb-steps">
-                    <li class="sb-step ${sb.pocStatus === "ready" ? "done" : sb.pocStatus === "writing" ? "active" : ""}"><span class="dot" style="color:${sb.pocStatus === "ready" ? "var(--safe)" : sb.pocStatus === "writing" ? "var(--primary)" : "var(--muted-fg)"}"></span>Create simulated attack for ${sb.cve.id}</li>
-                    <li class="sb-step ${sb.atkSpawned ? "done" : ""}"><span class="dot" style="color:${sb.atkSpawned ? "var(--safe)" : "var(--muted-fg)"}"></span>Start isolated test attacker</li>
-                    <li class="sb-step ${expBlocked ? "done" : expBreached ? "bad" : sb.expState === "attacking" ? "active" : ""}">
-                      <span class="dot" style="color:${expBlocked ? "var(--safe)" : expBreached ? "var(--affected)" : "var(--muted-fg)"}"></span>
-                      ${expBreached ? "Critical takeover succeeded on test copy!" : "Try attack against temporary server copy"}
-                    </li>
-                  </ul>
+                  <p class="agent-desc">Generates one simulated attack for this threat and tests the updated copy.</p>
                 </div>
               </div>
-
-              <div class="sandbox-row-vms">
-                <div class="sb-card ${patchDone ? "safe" : patchBusy ? "cyan" : "rose"}">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span class="eyebrow">Temporary Copy</span>
-                    <span class="badge ${patchDone ? "badge-safe" : patchBusy ? "badge-cyan" : "badge-affected"}">${patchDone ? "Updated & healthy" : patchBusy ? "Testing…" : expBreached ? "Compromised in test" : "At risk"}</span>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    ${serverSvg(cloneVisual, true)}
-                    <div style="min-width:0;">
-                      <div style="font-weight:600;font-size:13px;">Copy of ${sb.srv.role}</div>
-                      <div style="font-size:11px;color:var(--muted-fg);">${sb.destroyed ? "Deleted after test" : "Isolated from live traffic"}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div style="display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;">
-                  ${sb.atkSpawned ? `
-                    <svg viewBox="0 0 128 42" width="128" height="42" fill="none" aria-hidden="true">
-                      <line x1="122" y1="21" x2="${expBlocked ? 50 : 12}" y2="21" stroke="${expBlocked ? "#34d399" : "#fb7185"}" stroke-width="3" class="${sb.expState === "attacking" ? "attack-flow" : ""}"/>
-                      <path d="${expBlocked ? "M58 14l-9 7 9 7" : "M20 14l-9 7 9 7"}" stroke="${expBlocked ? "#34d399" : "#fb7185"}" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
-                      ${expBlocked ? `<path d="M31 6l12 4.5v9.5c0 8-5.2 14-12 16-6.8-2-12-8-12-16v-9.5L31 6z" fill="#06281e" stroke="#34d399" stroke-width="2.2"/><path d="M26.5 21l3 3 6-6.5" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>` : ""}
-                      ${expBreached ? `<path d="M31 6l12 4.5v9.5c0 8-5.2 14-12 16-6.8-2-12-8-12-16v-9.5L31 6z" fill="#2a0912" stroke="#fb7185" stroke-width="2.2"/><path d="M27 16l8 11M35 16l-8 11" stroke="#fb7185" stroke-width="2.2" stroke-linecap="round"/>` : ""}
-                    </svg>
-                    <span class="badge ${expBlocked ? "badge-safe" : "badge-affected"}">${expBlocked ? "Attack blocked" : expBreached ? "Copy breached!" : "Testing attack…"}</span>
-                  ` : `<span style="font-family:var(--mono);font-size:10px;color:var(--muted-fg);">Waiting for Agent 3…</span>`}
-                </div>
-
-                <div class="sb-card ${!sb.atkSpawned ? "dim" : expBlocked ? "" : "rose"}">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span class="eyebrow">Simulated Attacker</span>
-                    <span class="badge ${!sb.atkSpawned ? "badge-muted" : expBlocked ? "badge-safe" : "badge-affected"}">${!sb.atkSpawned ? "Waiting" : expBlocked ? "Stopped by fix" : expBreached ? "Takeover proven" : "Testing attack"}</span>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    ${serverSvg(!sb.atkSpawned || expBlocked ? "idle" : "affected", true)}
-                    <div style="min-width:0;">
-                      <div style="font-weight:600;font-size:13px;">Test Attacker</div>
-                      <div style="font-size:11px;color:var(--muted-fg);">${sb.destroyed ? "Deleted after test" : "Private test room only"}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              ${sb.shutDown ? `
-                <div class="shutdown-banner" role="alert">
-                  <span style="color:var(--likely);font-size:18px;line-height:1;">⏻</span>
-                  <div>
-                    <strong style="color:var(--likely);">Automatic Emergency Shutdown Executed:</strong>
-                    Due to the criticality of <strong>${sb.cve.id}</strong> (full remote takeover without login and no safe live update),
-                    <strong>${sb.srv.role} (${sb.srv.host})</strong> was automatically shut down to keep your network safe.
-                  </div>
-                </div>` : ""}
             </section>
           </div>`;
       }
@@ -1741,11 +1507,13 @@
             ? `<span style="color:var(--safe)">✓</span>`
             : e.kind === "auto_shutdown"
               ? `<span style="color:var(--likely)">⏻</span>`
-              : e.kind === "verdict_affected" || e.kind === "poc_breach" || e.kind === "fix_failed"
-                ? `<span style="color:var(--affected)">!</span>`
-                : e.kind === "cleanup" || e.kind === "arrived"
-                  ? `<span style="color:var(--muted-fg)">•</span>`
-                  : `<span style="color:var(--primary)">→</span>`;
+              : e.kind === "poc_reuse"
+                ? `<span style="color:var(--likely)">↻</span>`
+                : e.kind === "verdict_affected"
+                  ? `<span style="color:var(--affected)">!</span>`
+                  : e.kind === "cleanup" || e.kind === "arrived"
+                    ? `<span style="color:var(--muted-fg)">•</span>`
+                    : `<span style="color:var(--primary)">→</span>`;
           const isLast = i === st.slice.length - 1 && !st.finished;
           return `<div>${header}<div class="term-line">${prompt}<span>${e.text}${isLast ? '<span class="cursor-block"></span>' : ""}</span></div></div>`;
         }).join("");
@@ -1963,29 +1731,6 @@
     }
 
     // Event bindings
-    document.getElementById("btn-trigger").addEventListener("click", () => startSimulation(true));
-    document.getElementById("btn-pause").addEventListener("click", () => {
-      if (timer !== null) { stopTimer(); render(); }
-      else startSimulation(false);
-    });
-    document.getElementById("btn-step").addEventListener("click", () => {
-      stopTimer();
-      manualCveId = null;
-      if (cursor < TIMELINE.length - 1) cursor += 1;
-      render();
-    });
-    document.getElementById("btn-finish").addEventListener("click", () => {
-      stopTimer();
-      manualCveId = null;
-      cursor = TIMELINE.length - 1;
-      render();
-    });
-    document.getElementById("btn-reset").addEventListener("click", () => {
-      stopTimer();
-      cursor = -1;
-      manualCveId = null;
-      render();
-    });
 
     function switchTab(tab) {
       activeTab = tab;
@@ -1999,8 +1744,6 @@
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     });
 
-    document.getElementById("btn-threshold-pill").addEventListener("click", () => switchTab("settings"));
-
     const cfgEnabled = document.getElementById("cfg-shutdown-enabled");
     const cfgInput = document.getElementById("cfg-threshold-input");
     const cfgWrap = document.getElementById("cfg-threshold-wrap");
@@ -2011,7 +1754,7 @@
     let draftHosts = new Set(selectedShutdownHosts);
 
     function renderHostChecklist() {
-      cfgHostsCount.textContent = `Servers to shut down (${draftHosts.size}/${SERVERS.length})`;
+      cfgHostsCount.textContent = `Critical servers to shut down (${draftHosts.size}/${SERVERS.length})`;
       cfgHostsList.innerHTML = SERVERS.map((s) => {
         const checked = draftHosts.has(s.host);
         return `
@@ -2071,10 +1814,9 @@
     document.getElementById("filter-verdict").addEventListener("change", render);
 
     document.addEventListener("click", (e) => {
-      const cveBtn = e.target.closest("[data-cve-tab]");
-      if (cveBtn) {
-        stopTimer();
-        manualCveId = cveBtn.dataset.cveTab;
+      const sbBtn = e.target.closest("[data-sb-host]");
+      if (sbBtn) {
+        selectedSandboxHost = sbBtn.dataset.sbHost;
         render();
         return;
       }

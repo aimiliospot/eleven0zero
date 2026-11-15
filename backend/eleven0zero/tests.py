@@ -1,7 +1,7 @@
 from django.test import SimpleTestCase, TestCase, TransactionTestCase
 
 from . import engine
-from .models import Cve, Finding, Vm
+from .models import Cve, Finding, Setting, Vm
 
 
 class Matching(SimpleTestCase):
@@ -87,8 +87,11 @@ class Events(TransactionTestCase):
             engine.remediate("CVE-2020-14343", "lab.boxd")
         ev = self.client.get("/api/events").json()["events"]
         kinds = [e["kind"] for e in ev]
-        assert kinds == ["snapshot", "clone", "plan", "fix_cmd", "fix_out", "fix_done",
+        assert kinds == ["snapshot", "clone", "plan", "fix_cmd", "fix_out", "fix_out", "fix_done",
                          "poc_gen", "attacker", "attack", "poc_done", "cleanup", "cleanup"], kinds
+        rem = Finding.objects.get(cve_id="CVE-2020-14343", vm_id="lab.boxd").remediation
+        assert rem["fixed_snapshot"].startswith("wdf-lab-"), rem
+        assert rem["deploy_cmd"].endswith(f"--from-snapshot {rem['fixed_snapshot']}"), rem
 
     def test_poc_generated_once_across_multiple_affected_vms(self):
         import tempfile
@@ -278,6 +281,16 @@ class DemoHosts(TestCase):
         assert sorted(Vm.objects.values_list("host", flat=True)) == ["a.boxd", "b.boxd"]
         engine.add_demo_hosts()  # unset: no-op
         assert Vm.objects.count() == 2
+
+    def test_demo_shutdown_hosts_seed_settings_once(self):
+        from unittest import mock
+        with mock.patch.dict("os.environ", {"DEMO_SHUTDOWN_HOSTS": "a.boxd, bad host!"}):
+            engine.add_demo_hosts()
+        assert Setting.objects.get(pk=1).shutdown_hosts == ["a.boxd"]
+        Setting.objects.filter(pk=1).update(shutdown_hosts=[])  # user's own choice wins
+        with mock.patch.dict("os.environ", {"DEMO_SHUTDOWN_HOSTS": "a.boxd"}):
+            engine.add_demo_hosts()
+        assert Setting.objects.get(pk=1).shutdown_hosts == []
 
 
 class CollectCommand(SimpleTestCase):

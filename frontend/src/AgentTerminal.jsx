@@ -58,7 +58,7 @@ export default function AgentTerminal({ lines, working, cveId }) {
         role="log"
         aria-live="polite"
         aria-label="Live agent commands"
-        className="h-[420px] overflow-y-auto p-3.5 font-mono text-xs leading-relaxed lg:h-[640px]"
+        className="h-[380px] overflow-y-auto p-3.5 font-mono text-xs leading-relaxed lg:h-[520px]"
       >
         {lines.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center text-muted-foreground">

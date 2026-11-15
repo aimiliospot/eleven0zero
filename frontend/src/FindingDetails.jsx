@@ -185,6 +185,14 @@ export default function FindingDetails({ f, onClose }) {
                     {"services_ok" in r && <span className="flex items-center gap-1.5 text-muted-foreground">Services healthy <Tick ok={r.services_ok} /></span>}
                   </div>
                   <div className="text-xs text-muted-foreground">Snapshot: {r.snapshot ? <code>{r.snapshot}</code> : "—"}</div>
+                  {r.fixed_snapshot && (
+                    <div className="grid gap-1.5">
+                      <div className="text-xs text-muted-foreground">Patched snapshot: <code>{r.fixed_snapshot}</code></div>
+                      <div className="rounded-md border border-border/80 bg-background/85 p-3 font-mono text-xs text-foreground break-all">
+                        $ {r.deploy_cmd}
+                      </div>
+                    </div>
+                  )}
                   {r.commands?.length > 0 && (
                     <div className="grid gap-1.5 rounded-md border border-border/80 bg-background/85 p-3 font-mono text-xs">
                       {r.commands.map((c, i) => (

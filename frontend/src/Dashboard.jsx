@@ -51,7 +51,7 @@ export default function Dashboard({ data, onAnalyze, onAddHost, onRemoveHost }) 
               className="pl-9 font-mono"
               value={cve}
               onChange={(e) => setCve(e.target.value)}
-              placeholder="CVE-2024-6387"
+              placeholder="CVE-2020-14343"
               required
               spellCheck="false"
             />

@@ -21,11 +21,11 @@ def cve(cve_id, title, description, product, versions, cvss):
 
 
 CVES = {c["cveMetadata"]["cveId"]: c for c in [
-    cve("CVE-2024-22195", "Jinja2 xmlattr filter allows HTML attribute injection",
-        "Jinja2 before 3.1.3 lets the xmlattr filter accept keys containing spaces, so an application that "
-        "passes user-controlled keys to xmlattr can inject arbitrary HTML attributes (cross-site scripting). "
-        "Fixed in 3.1.3.",
-        "Jinja2", [{"version": "0", "lessThan": "3.1.3", "status": "affected", "versionType": "python"}], 6.1),
+    cve("CVE-2020-14343", "PyYAML full_load arbitrary code execution",
+        "PyYAML before 5.4 is vulnerable to arbitrary code execution when processing untrusted YAML files "
+        "through yaml.full_load or the FullLoader, via the python/object/new constructor. "
+        "Fixed in 5.4 by upgrading PyYAML (`pip install -U 'pyyaml>=5.4'`).",
+        "pyyaml", [{"version": "0", "lessThan": "5.4", "status": "affected", "versionType": "python"}], 9.8),
     cve("CVE-2024-6387", "OpenSSH regreSSHion race condition in sshd",
         "A signal handler race condition in OpenSSH sshd allows unauthenticated remote code execution "
         "on glibc-based Linux systems.",
