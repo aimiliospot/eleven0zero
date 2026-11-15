@@ -26,6 +26,14 @@ class Cve(models.Model):
     seen_at = models.DateTimeField(default=timezone.now)
 
 
+class Event(models.Model):
+    """Append-only progress log the GRAPHICS tab polls."""
+    cve_id = models.CharField(max_length=32)
+    host = models.CharField(max_length=255, blank=True)
+    kind = models.CharField(max_length=16)  # arrived | judging | model | verdict | done | error
+    text = models.TextField()
+
+
 class Finding(models.Model):
     cve = models.ForeignKey(Cve, on_delete=models.CASCADE, related_name="findings")
     vm = models.ForeignKey(Vm, on_delete=models.CASCADE, related_name="findings")  # removing a VM drops its findings

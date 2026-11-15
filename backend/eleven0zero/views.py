@@ -5,7 +5,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
 from . import engine
-from .models import Cve, Finding, Setting, Vm
+from .models import Cve, Event, Finding, Setting, Vm
 from .tasks import replay_cve
 
 
@@ -33,6 +33,17 @@ def state(request):
                         ports=[f"{p['process'] or '?'}@{p['local']}" for p in inv.get("ports", []) if p["exposed"]]))
     cves = list(Cve.objects.order_by("-seen_at").values("id", "title", "status", "seen_at")[:30])
     return JsonResponse({"findings": findings, "vms": vms, "cves": cves})
+
+
+@require_http_methods(["GET"])
+def events(request):
+    try:
+        since = int(request.GET.get("since", 0))
+    except ValueError:
+        since = 0
+    qs = Event.objects.filter(id__gt=since).values("id", "cve_id", "host", "kind", "text")
+    rows = list(reversed(list(qs.order_by("-id")[:200]))) if since == 0 else list(qs.order_by("id")[:200])
+    return JsonResponse({"events": rows})
 
 
 MODEL_RE = re.compile(r"(?:venice:)?[A-Za-z0-9._-]{1,64}")

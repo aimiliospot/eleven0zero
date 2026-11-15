@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db import close_old_connections, connection
 from django.utils import timezone
 
-from .models import Cve, Finding, Setting, Vm
+from .models import Cve, Event, Finding, Setting, Vm
 
 # env overrides let the demo stack point at demo/mock_cve_api.py
 DELTA_URL = os.getenv("CVE_DELTA_URL", "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/deltaLog.json")
@@ -63,15 +63,33 @@ def collect(host):
 def collect_one(host):
     # filter().update(): a host removed while being collected must stay removed
     try:
-        Vm.objects.filter(host=host).update(collected_at=timezone.now(), inventory=collect(host), error=None)
+        emit("", "scan", f"{' '.join(collect_command(host)[:4])} ... < collector.py", host)
+        inv = collect(host)
+        Vm.objects.filter(host=host).update(collected_at=timezone.now(), inventory=inv, error=None)
+        emit("", "scan_ok", f"inventory ready: {len(inv.get('packages', {}))} pkgs, {len(inv.get('services', []))} services", host)
     except Exception as e:
         Vm.objects.filter(host=host).update(error=str(e))  # keep last good inventory
+        emit("", "error", f"inventory failed: {str(e)[:120]}", host)
         print(f"[inventory] {host}: {e}")
 
 
+def parallel(fn, items):
+    """Run fn on every item in its own thread (each closes its DB connection); one failure doesn't stop the rest."""
+    def run(item):
+        try:
+            return fn(item)
+        except Exception:
+            traceback.print_exc()
+        finally:
+            connection.close()
+    items = list(items)
+    if items:
+        with ThreadPoolExecutor(len(items)) as ex:
+            list(ex.map(run, items))
+
+
 def inventory_once():
-    for host in list(Vm.objects.values_list("host", flat=True)):
-        collect_one(host)
+    parallel(collect_one, Vm.objects.values_list("host", flat=True))
 
 
 # ---------- matching ----------
@@ -235,7 +253,7 @@ Installed inventory (name -> version/source): {json.dumps(dict(list(vm_names(inv
     return ask_json(model, prompt, SCHEMA)
 
 
-def judge(record, host, inv, matched):
+def judge(record, host, inv, matched, quiet=False):
     """Ask every selected model in parallel (network only, no DB in the threads) and aggregate the votes."""
     models = selected_models()
 
@@ -247,10 +265,24 @@ def judge(record, host, inv, matched):
             return {"model": model, "error": str(e)[:300]}
     with ThreadPoolExecutor(len(models)) as ex:
         votes = list(ex.map(one, models))
+    if not quiet:
+        cve_id = record["cveMetadata"]["cveId"]
+        for v in votes:
+            emit(cve_id, "model", f"{v['model']}: " + (f"error {v['error'][:80]}" if "error" in v else f"{v['verdict']} ({v['confidence']:.0%})"), host)
     ok = [v for v in votes if "error" not in v]
     if not ok:
         raise RuntimeError("; ".join(f"{v['model']}: {v['error']}" for v in votes)[:500])
     return {**aggregate(ok), "votes": votes}
+
+
+def emit(cve_id, kind, text, host=""):
+    try:
+        Event.objects.create(cve_id=cve_id, host=host, kind=kind, text=text)
+        cutoff = Event.objects.order_by("-id").values_list("id", flat=True)[500:501].first()
+        if cutoff:
+            Event.objects.filter(id__lte=cutoff).delete()
+    except Exception:
+        pass
 
 
 def save_finding(cve_id, host, f):
@@ -259,25 +291,42 @@ def save_finding(cve_id, host, f):
         votes=f.get("votes", []), remediation=None, exploit=None, created_at=timezone.now()))  # re-judged -> fix/exploit are retested
 
 
-def evaluate(record):
+def start_evaluation(record):
+    """Mark the CVE as evaluating; returns the hosts to judge (one Celery task each, see tasks.py)."""
     cve_id = record["cveMetadata"]["cveId"]
-    terms = cve_terms(record)
     # ponytail: one LLM call per CVE x VM x model for the whole feed; cap per poll or use a cheap model if volume hurts
-    hits = [(v.host, v.inventory, matches(terms, vm_names(v.inventory)))
-            for v in Vm.objects.filter(inventory__isnull=False)]
-    if not hits:  # no VM inventory yet, nothing to judge
-        return Cve.objects.filter(id=cve_id).update(status="skipped")
-    Cve.objects.filter(id=cve_id).update(status="evaluating")
-    for host, inv, m in hits:
-        try:
-            f = judge(record, host, inv, m)
-            save_finding(cve_id, host, f)
-            if f["verdict"] == "affected":
-                queue_remediation(cve_id, host)
-        except Exception as e:
-            print(f"[judge] {cve_id} {host}: {e}")
-            save_finding(cve_id, host, {"verdict": "error", "confidence": 0, "evidence": str(e)[:500], "actions": []})
+    hosts = list(Vm.objects.filter(inventory__isnull=False).values_list("host", flat=True))
+    if not hosts:  # no VM inventory yet, nothing to judge
+        Cve.objects.filter(id=cve_id).update(status="skipped")
+        return []
+    Cve.objects.filter(id=cve_id).update(status="evaluating", seen_at=timezone.now())
+    emit(cve_id, "arrived", f"{cve_id} received: {', '.join(sorted(cve_terms(record))[:5]) or 'no product names'}")
+    return hosts
+
+
+def evaluate_host(record, host):
+    """Judge one CVE against one VM. Never raises, so the Celery chord always reaches finish_evaluation."""
+    cve_id = record["cveMetadata"]["cveId"]
+    vm = Vm.objects.filter(host=host, inventory__isnull=False).first()
+    if not vm:  # removed since start_evaluation
+        return
+    try:
+        m = matches(cve_terms(record), vm_names(vm.inventory))
+        emit(cve_id, "judging", f"checking {host}: {len(m)} matching component(s)", host)
+        f = judge(record, host, vm.inventory, m)
+        save_finding(cve_id, host, f)
+        emit(cve_id, "verdict", f"{f['verdict']} ({f['confidence']:.0%})", host)
+        if f["verdict"] == "affected":
+            queue_remediation(cve_id, host)
+    except Exception as e:
+        print(f"[judge] {cve_id} {host}: {e}")
+        save_finding(cve_id, host, {"verdict": "error", "confidence": 0, "evidence": str(e)[:500], "actions": []})
+        emit(cve_id, "error", str(e)[:120], host)
+
+
+def finish_evaluation(cve_id):
     Cve.objects.filter(id=cve_id).update(status="evaluated")
+    emit(cve_id, "done", f"{cve_id} finished")
 
 
 def store(record):
@@ -442,34 +491,64 @@ Matched components: {json.dumps(matched)}"""
     return ask_json(model, prompt, EXPLOIT_SCHEMA)
 
 
+def reusable_exploit(cve_id, host, model):
+    """Return an already-generated PoC for this CVE evaluation so multiple affected VMs generate the PoC once."""
+    cve = Cve.objects.filter(id=cve_id).first()
+    qs = Finding.objects.filter(cve_id=cve_id).exclude(vm_id=host)
+    if cve and cve.seen_at:
+        qs = qs.filter(created_at__gte=cve.seen_at)
+    for other in qs.order_by("id"):
+        prev = other.exploit or {}
+        if prev.get("model") == model and (prev.get("script") or prev.get("status") in ("not_feasible", "blocked")):
+            return prev
+    return None
+
+
 def run_exploit(cve_id, host, record, inv, clone, model, region):
-    """Generate a PoC for the CVE and fire it at the patched clone from a second, throwaway attacker VM."""
+    """Generate a PoC once per CVE (reusing it on subsequent affected VMs) and fire it at the patched clone."""
     matched = {k: v for k, v in vm_names(inv).items() if k in cve_terms(record)}
     exp = {"status": "running", "model": model}
     atk = None
     try:
-        gen = generate_exploit(record, host, inv, matched, model)
-        if not gen.get("feasible"):
-            exp.update(status="not_feasible", notes=gen.get("notes", ""))
+        cached = reusable_exploit(cve_id, host, model)
+        if cached and cached.get("status") in ("not_feasible", "blocked"):
+            exp.update({k: cached[k] for k in ("status", "notes", "error") if k in cached}, reused_poc=True)
+            detail = (exp.get("notes") or exp.get("error") or "")[:120]
+            emit(cve_id, "poc_done", f"{exp['status']}: {detail} (reused)", host)
             return exp
-        lang, script, marker = gen.get("language", ""), gen.get("script", ""), gen.get("success_marker", "")
-        if lang not in RUNNERS or not script.strip() or not marker.strip():
-            exp.update(status="error", error="malformed exploit response from the model")
-            return exp
-        if FORBIDDEN.search(script):
-            exp.update(status="blocked", error="generated exploit touched firewall/power commands")
-            return exp
-        exp.update(language=lang, script=script, success_marker=marker, notes=gen.get("notes", ""))
+        if cached and cached.get("script"):
+            lang, script, marker = cached["language"], cached["script"], cached["success_marker"]
+            exp.update(language=lang, script=script, success_marker=marker,
+                       notes=cached.get("notes", ""), saved_path=cached.get("saved_path", ""), reused_poc=True)
+            emit(cve_id, "poc_reuse", f"reusing {cve_id} PoC (poc.{EXT[lang]}) against {clone}", host)
+        else:
+            emit(cve_id, "poc_gen", f"{model}: writing safe network PoC for {cve_id}", host)
+            gen = generate_exploit(record, host, inv, matched, model)
+            if not gen.get("feasible"):
+                exp.update(status="not_feasible", notes=gen.get("notes", ""))
+                emit(cve_id, "poc_done", f"not_feasible: {exp['notes'][:140]}", host)
+                return exp
+            lang, script, marker = gen.get("language", ""), gen.get("script", ""), gen.get("success_marker", "")
+            if lang not in RUNNERS or not script.strip() or not marker.strip():
+                exp.update(status="error", error="malformed exploit response from the model")
+                emit(cve_id, "poc_done", f"error: {exp['error']}", host)
+                return exp
+            if FORBIDDEN.search(script):
+                exp.update(status="blocked", error="generated exploit touched firewall/power commands")
+                emit(cve_id, "poc_done", f"blocked: {exp['error']}", host)
+                return exp
+            exp.update(language=lang, script=script, success_marker=marker, notes=gen.get("notes", ""))
 
-        EXPLOIT_DIR.mkdir(parents=True, exist_ok=True)
-        safe_host = SAFE_RE.sub("_", host)
-        path = EXPLOIT_DIR / f"{cve_id}_{safe_host}_{int(time.time())}.{EXT[lang]}"
-        path.write_text(script)
-        exp["saved_path"] = str(path)  # saved regardless of outcome, for IT admin review
+            EXPLOIT_DIR.mkdir(parents=True, exist_ok=True)
+            safe_cve = SAFE_RE.sub("_", cve_id)
+            path = EXPLOIT_DIR / f"{safe_cve}_{int(time.time())}.{EXT[lang]}"
+            path.write_text(script)
+            exp["saved_path"] = str(path)  # saved once per CVE regardless of outcome, for IT admin review
 
         net = f"wd-net-{secrets.token_hex(3)}"
         boxd_ok("machine", "networks", clone, net, region=region)
-        atk = f"wdx-{secrets.token_hex(3)}"
+        exp["attacker"] = atk = f"wdx-{secrets.token_hex(3)}"
+        emit(cve_id, "attacker", f"boxd new {atk} --isolated --networks {net}  # poc.{EXT[lang]} ready", host)
         boxd_ok("new", atk, "--isolated", "--networks", net, region=region)
         for _ in range(20):  # wait until the attacker VM answers
             if vm_exec(atk, "true", 20, region)[0] == 0:
@@ -478,17 +557,21 @@ def run_exploit(cve_id, host, record, inv, clone, model, region):
         info = json.loads(boxd_ok("machine", "get", clone, "--json", region=region))
         target = info.get("public_ip") or clone
 
+        emit(cve_id, "attack", f"boxd machine exec {atk} -- TARGET={target} {RUNNERS[lang]} /tmp/poc", host)
         b64 = base64.b64encode(script.encode()).decode()
         rc, out = vm_exec(atk, f"echo {b64} | base64 -d > /tmp/poc && "
                                 f"TARGET={target} timeout 60 {RUNNERS[lang]} /tmp/poc", 90, region)
         exp["output"] = out[-2000:]
         exp["vulnerable"] = marker in out
         exp["status"] = "vulnerable" if exp["vulnerable"] else "patched"
+        emit(cve_id, "poc_done", f"{exp['status']}: {'exploit blocked on patched clone' if exp['status'] == 'patched' else 'clone still exploitable'}", host)
     except Exception as e:
         traceback.print_exc()
         exp.update(status="error", error=str(e)[:500])
+        emit(cve_id, "error", f"exploit check error: {str(e)[:140]}", host)
     finally:
         if atk:
+            emit(cve_id, "cleanup", f"boxd machine rm {atk} -y", host)
             boxd("machine", "rm", atk, "-y", region=region)
     return exp
 
@@ -514,14 +597,18 @@ def remediate(cve_id, host):
             m = BOXD_HOST.fullmatch(host)
             if not m or not shutil.which("boxd"):
                 rem.update(status="skipped", error="needs a boxd VM and the boxd CLI (snapshots are a boxd feature)")
+                emit(cve_id, "fix_done", "skipped: boxd CLI not configured for sandbox snapshots", host)
                 return
             machine, record, inv = m.group(1), Cve.objects.get(id=cve_id).record, Vm.objects.get(host=host).inventory
             region = machine_region(machine)  # snapshot, clone and attacker all live in the VM's region
             rem["snapshot"] = snap = f"wd-{machine}-{int(time.time())}"
+            emit(cve_id, "snapshot", f"boxd snapshots save {machine} {snap}", host)
             boxd_ok("snapshots", "save", machine, snap, region=region)
             save()
-            clone = f"wdt-{secrets.token_hex(3)}"
+            rem["clone"] = clone = f"wdt-{secrets.token_hex(3)}"
+            emit(cve_id, "clone", f"boxd new {clone} --from-snapshot {snap} --isolated", host)
             boxd_ok("new", clone, "--from-snapshot", snap, "--isolated", region=region)
+            save()
             for _ in range(20):  # wait until the clone answers
                 if vm_exec(clone, "true", 20, region)[0] == 0:
                     break
@@ -529,12 +616,17 @@ def remediate(cve_id, host):
             before, failed0 = vm_inventory(clone, region), failed_units(clone, region)
             rem["model"] = model = remediation_model()
             save()
+            emit(cve_id, "plan", f"{model}: writing safe upgrade commands for {clone}", host)
             for cmd in plan_commands(record, host, inv, f.actions, model):
                 if FORBIDDEN.search(cmd):
                     rem["commands"].append({"cmd": cmd, "rc": None, "out": "blocked: firewall/power commands are not allowed"})
+                    emit(cve_id, "fix_out", f"blocked unsafe command: {cmd}", host)
                     continue
+                emit(cve_id, "fix_cmd", f"boxd machine exec {clone} -- {cmd}", host)
                 rc, out = vm_exec(clone, cmd, region=region)
                 rem["commands"].append({"cmd": cmd, "rc": rc, "out": out[-500:]})
+                tail = (out.strip().splitlines() or ["done"])[-1][:140]
+                emit(cve_id, "fix_out", f"rc={rc}: {tail}", host)
                 save()
                 if rc:
                     break
@@ -542,9 +634,10 @@ def remediate(cve_id, host):
             rem.update(compare(before, after, failed0, failed1))
             hits = matches(cve_terms(record), vm_names(after))
             # component still present: ask the judge about the post-fix inventory
-            verdict = judge(record, host, after, hits)["verdict"] if hits else "not_affected"
+            verdict = judge(record, host, after, hits, quiet=True)["verdict"] if hits else "not_affected"
             rem.update(verdict_after=verdict, fixed=verdict == "not_affected")
             rem["status"] = "passed" if rem["fixed"] and rem["services_ok"] else "failed"
+            emit(cve_id, "fix_done", f"{rem['status']}: clone {clone} {'patched & services healthy' if rem['status'] == 'passed' else 'fix check failed'}", host)
             save()
             if rem["status"] == "passed":
                 exp_model = exploitation_model()
@@ -554,8 +647,10 @@ def remediate(cve_id, host):
         except Exception as e:
             traceback.print_exc()
             rem.update(status="error", error=str(e)[:500])
+            emit(cve_id, "error", f"sandbox error: {str(e)[:140]}", host)
         finally:
             if clone:
+                emit(cve_id, "cleanup", f"boxd machine rm {clone} -y", host)
                 boxd("machine", "rm", clone, "-y", region=region)
             save()
 

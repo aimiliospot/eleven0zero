@@ -104,7 +104,7 @@ docker compose -f docker-compose-dev.yml run --rm tools python setup_vms.py
 docker compose up --build -d
 ```
 
-Open **http://localhost:5000**, add hosts (e.g. `keen-pond.boxd`, `root@10.0.0.5`, `user@host:2222`) and watch findings arrive.
+Open **http://localhost:5000**, add hosts (e.g. `hackathon-vm-1.boxd`, `root@10.0.0.5`, `user@host:2222`) and watch findings arrive.
 
 > Your `~/.ssh` and boxd key folders are mounted read-only into the containers. Hosts defined in `~/.ssh/config` work by alias.
 
@@ -114,11 +114,11 @@ Open **http://localhost:5000**, add hosts (e.g. `keen-pond.boxd`, `root@10.0.0.5
 
 | VM | Setup | Expected result |
 |---|---|---|
-| `keen-pond` | clean | ✅ not affected |
-| `free-sky` | clean | ✅ not affected |
-| `cve-2024-6387-lab` | isolated, PyYAML 5.3.1 | 🚨 affected by CVE-2020-14343 → fix tested → exploit re-run |
+| `hackathon-vm-1` | clean | ✅ not affected |
+| `hackathon-vm-2` | clean | ✅ not affected |
+| `hackathon-vulnerable-vm` | isolated, Jinja2 3.1.2 | 🚨 affected by CVE-2024-22195 → fix tested → exploit re-run |
 
-To trigger it right away, open the dashboard and analyze `CVE-2020-14343`.
+To trigger it right away, open the dashboard and analyze `CVE-2024-22195`.
 
 ## Configuration
 
@@ -156,7 +156,7 @@ cd backend && python manage.py test
 
 To start over completely (demo VMs, **all** boxd snapshots, database), run `docker compose -f docker-compose-dev.yml run --rm tools python rebuild.py`, then the `docker compose down -v && docker compose up --build -d` it prints.
 
-To demo without cve.org, run `docker compose -f docker-compose-demo.yml up --build --force-recreate -d`: the feed is served by `demo/mock_cve_api.py` (FastAPI) (CVE-2020-14343, CVE-2024-6387, CVE-2023-44487). Edit the `CVES` list there to change them. Each `up` also resets the boxd demo VMs, all boxd snapshots and the database (needs `BOXD_TOKEN`), then adds the three demo hosts to the dashboard automatically. Hosts ending in `.boxd` are scanned through the boxd CLI with `BOXD_TOKEN` alone, so the demo needs no SSH keys; other hosts are scanned over SSH.
+To demo without cve.org, run `docker compose -f docker-compose-demo.yml up --build --force-recreate -d`: the feed is served by `demo/mock_cve_api.py` (FastAPI) (CVE-2024-22195, CVE-2024-6387, CVE-2023-44487). Edit the `CVES` list there to change them. Each `up` also resets the boxd demo VMs, all boxd snapshots and the database (needs `BOXD_TOKEN`), then adds the three demo hosts to the dashboard automatically. Hosts ending in `.boxd` are scanned through the boxd CLI with `BOXD_TOKEN` alone, so the demo needs no SSH keys; other hosts are scanned over SSH.
 
 ## Known limits
 

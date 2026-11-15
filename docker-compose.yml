@@ -4,6 +4,7 @@ x-app: &app
     GOOGLE_API_KEY: ${GOOGLE_API_KEY:?set GOOGLE_API_KEY in .env}
     GEMINI_MODEL: ${GEMINI_MODEL:-gemini-4-carbon}
     BOXD_TOKEN: ${BOXD_TOKEN:-}  # `boxd auth keys create eleven0zero`; without it the fix test fails with an auth error
+    BOXD_REGION: ${BOXD_REGION:-fra}  # where the demo VMs live; unset, boxd picks the closest region and misses them
     VENICE_API_KEY: ${VENICE_API_KEY:-}  # Venice AI key for exploit PoC generation; without it the exploit step fails with a clear error
     CELERY_BROKER_URL: redis://redis:6379/0
   volumes:

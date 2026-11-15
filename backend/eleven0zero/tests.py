@@ -1,4 +1,4 @@
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
 
 from . import engine
 from .models import Cve, Finding, Vm
@@ -40,6 +40,94 @@ class Api(TestCase):
         assert Finding.objects.count() == 0
         strict = type(self.client)(enforce_csrf_checks=True)
         assert strict.post("/api/hosts", {"host": "vm1"}, content_type="application/json").status_code == 403
+
+
+class Events(TransactionTestCase):
+    def test_evaluate_emits_progress(self):
+        from unittest.mock import patch
+        Vm.objects.create(host="vm1", inventory={"packages": {"openssh-server": "9"}})
+        rec = {"cveMetadata": {"cveId": "CVE-2024-2"}, "containers": {"cna": {"affected": [{"packageName": "openssh"}]}}}
+        Cve.objects.create(id="CVE-2024-2", title="t", record=rec)
+        with patch.object(engine, "judge", return_value={"verdict": "not_affected", "confidence": .9, "evidence": "", "actions": []}):
+            from config.celery import app
+            from .tasks import evaluate_cve
+            app.conf.task_always_eager = True
+            try:
+                evaluate_cve.delay("CVE-2024-2")
+            finally:
+                app.conf.task_always_eager = False
+        ev = self.client.get("/api/events").json()["events"]
+        assert [e["kind"] for e in ev] == ["arrived", "judging", "verdict", "done"], ev
+        assert self.client.get(f"/api/events?since={ev[1]['id']}").json()["events"] == ev[2:]
+
+    def test_remediate_and_exploit_emit_events(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        inv = {"os": {"PRETTY_NAME": "Ubuntu 24.04"}, "packages": {"pyyaml": "5.3.1"}, "services": ["sshd"], "ports": []}
+        Vm.objects.create(host="lab.boxd", inventory=inv)
+        rec = {"cveMetadata": {"cveId": "CVE-2020-14343"}, "containers": {"cna": {
+            "affected": [{"packageName": "pyyaml"}], "descriptions": [{"lang": "en", "value": "vuln"}]}}}
+        Cve.objects.create(id="CVE-2020-14343", title="PyYAML", record=rec)
+        Finding.objects.create(cve_id="CVE-2020-14343", vm_id="lab.boxd", verdict="affected",
+                               confidence=.95, actions=["pip3 install pyyaml>=5.4"], remediation={"status": "queued"})
+        clean_inv = {**inv, "packages": {"pyyaml": "6.0.1"}}
+        poc_res = {"feasible": True, "language": "python3", "script": "print('safe')", "success_marker": "VULN!", "notes": "ok"}
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("shutil.which", return_value="/usr/bin/boxd"), \
+             patch.object(engine, "EXPLOIT_DIR", Path(tmp)), \
+             patch.object(engine, "machine_region", return_value="eu-1"), \
+             patch.object(engine, "boxd_ok", return_value='{"public_ip": "10.0.0.2"}'), \
+             patch.object(engine, "boxd", return_value=(0, "", "")), \
+             patch.object(engine, "vm_exec", side_effect=[(0, ""), (0, ""), (0, "Successfully installed pyyaml-6.0.1"), (0, ""), (0, ""), (0, "safe")]), \
+             patch.object(engine, "vm_inventory", side_effect=[inv, clean_inv]), \
+             patch.object(engine, "plan_commands", return_value=["pip3 install 'pyyaml>=5.4'"]), \
+             patch.object(engine, "judge", return_value={"verdict": "not_affected", "confidence": .95, "evidence": "fixed", "actions": []}), \
+             patch.object(engine, "generate_exploit", return_value=poc_res):
+            engine.remediate("CVE-2020-14343", "lab.boxd")
+        ev = self.client.get("/api/events").json()["events"]
+        kinds = [e["kind"] for e in ev]
+        assert kinds == ["snapshot", "clone", "plan", "fix_cmd", "fix_out", "fix_done",
+                         "poc_gen", "attacker", "attack", "poc_done", "cleanup", "cleanup"], kinds
+
+    def test_poc_generated_once_across_multiple_affected_vms(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        inv = {"os": {"PRETTY_NAME": "Ubuntu 24.04"}, "packages": {"pyyaml": "5.3.1"}, "services": ["sshd"], "ports": []}
+        clean_inv = {**inv, "packages": {"pyyaml": "6.0.1"}}
+        rec = {"cveMetadata": {"cveId": "CVE-2020-14343"}, "containers": {"cna": {
+            "affected": [{"packageName": "pyyaml"}], "descriptions": [{"lang": "en", "value": "vuln"}]}}}
+        Cve.objects.create(id="CVE-2020-14343", title="PyYAML", record=rec)
+        for host in ("lab1.boxd", "lab2.boxd"):
+            Vm.objects.create(host=host, inventory=inv)
+            Finding.objects.create(cve_id="CVE-2020-14343", vm_id=host, verdict="affected",
+                                   confidence=.95, actions=["pip3 install pyyaml>=5.4"], remediation={"status": "queued"})
+        poc_res = {"feasible": True, "language": "python3", "script": "print('safe')", "success_marker": "VULN!", "notes": "ok"}
+        exec_seq = [(0, ""), (0, ""), (0, "ok"), (0, ""), (0, ""), (0, "safe")]
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("shutil.which", return_value="/usr/bin/boxd"), \
+             patch.object(engine, "EXPLOIT_DIR", Path(tmp)), \
+             patch.object(engine, "machine_region", return_value="eu-1"), \
+             patch.object(engine, "boxd_ok", return_value='{"public_ip": "10.0.0.2"}'), \
+             patch.object(engine, "boxd", return_value=(0, "", "")), \
+             patch.object(engine, "vm_exec", side_effect=exec_seq * 2), \
+             patch.object(engine, "vm_inventory", side_effect=[inv, clean_inv, inv, clean_inv]), \
+             patch.object(engine, "plan_commands", return_value=["pip3 install 'pyyaml>=5.4'"]), \
+             patch.object(engine, "judge", return_value={"verdict": "not_affected", "confidence": .95, "evidence": "fixed", "actions": []}), \
+             patch.object(engine, "generate_exploit", return_value=poc_res) as gen_mock:
+            engine.remediate("CVE-2020-14343", "lab1.boxd")
+            engine.remediate("CVE-2020-14343", "lab2.boxd")
+            assert gen_mock.call_count == 1
+            assert len(list(Path(tmp).iterdir())) == 1
+        f1 = Finding.objects.get(cve_id="CVE-2020-14343", vm_id="lab1.boxd")
+        f2 = Finding.objects.get(cve_id="CVE-2020-14343", vm_id="lab2.boxd")
+        assert f1.exploit["status"] == "patched" and not f1.exploit.get("reused_poc")
+        assert f2.exploit["status"] == "patched" and f2.exploit.get("reused_poc") is True
+        assert f1.exploit["saved_path"] == f2.exploit["saved_path"]
+        ev = self.client.get("/api/events").json()["events"]
+        assert [e["kind"] for e in ev if e["host"] == "lab1.boxd" and e["kind"].startswith("poc_")] == ["poc_gen", "poc_done"]
+        assert [e["kind"] for e in ev if e["host"] == "lab2.boxd" and e["kind"].startswith("poc_")] == ["poc_reuse", "poc_done"]
 
 
 class Remediation(SimpleTestCase):
@@ -119,7 +207,7 @@ class CollectCommand(SimpleTestCase):
         from unittest import mock
         with mock.patch("shutil.which", return_value="/usr/local/bin/boxd"):
             with mock.patch.dict("os.environ", {"BOXD_TOKEN": "t"}):
-                assert engine.collect_command("keen-pond.boxd")[:4] == ["boxd", "machine", "exec", "keen-pond"]
+                assert engine.collect_command("hackathon-vm-1.boxd")[:4] == ["boxd", "machine", "exec", "hackathon-vm-1"]
                 assert engine.collect_command("root@10.0.0.5")[0] == "ssh"
             with mock.patch.dict("os.environ", {"BOXD_TOKEN": ""}):
-                assert engine.collect_command("keen-pond.boxd")[0] == "ssh"
+                assert engine.collect_command("hackathon-vm-1.boxd")[0] == "ssh"

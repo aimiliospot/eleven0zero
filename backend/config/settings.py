@@ -32,6 +32,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 # Celery + Redis: replays, new-CVE evaluation, remediation. CELERY_EAGER=1 runs tasks inline (no Redis needed locally).
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL  # chords (per-VM evaluation) need a result backend
 CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_EAGER") == "1"
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_ROUTES = {"eleven0zero.tasks.remediate_finding": {"queue": "remediation"}}

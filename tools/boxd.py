@@ -1,10 +1,10 @@
 """Shared helpers for the VM scripts: thin wrapper over the boxd CLI."""
 import json, subprocess
 
-DEMO_VMS = {"keen-pond": ["--vcpu", "2", "--memory", "8G"],
-            "free-sky": ["--vcpu", "1", "--memory", "4G"],
-            "cve-2024-6387-lab": ["--isolated"]}
-LAB = "cve-2024-6387-lab"
+DEMO_VMS = {"hackathon-vm-1": ["--vcpu", "2", "--memory", "8G"],
+            "hackathon-vm-2": ["--vcpu", "1", "--memory", "4G"],
+            "hackathon-vulnerable-vm": ["--isolated"]}
+LAB = "hackathon-vulnerable-vm"
 
 
 def boxd(*args, check=True, capture=False):

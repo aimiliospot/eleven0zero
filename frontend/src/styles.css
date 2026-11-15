@@ -65,3 +65,34 @@
     @apply rounded-sm border border-border/80 bg-background/80 px-1.5 py-0.5 font-mono text-[0.8125rem] text-primary break-words;
   }
 }
+
+@keyframes scan-sweep {
+  0% { transform: translateY(-100%); opacity: 0; }
+  20% { opacity: 0.9; }
+  80% { opacity: 0.9; }
+  100% { transform: translateY(380%); opacity: 0; }
+}
+
+@keyframes beam-flow {
+  to { stroke-dashoffset: -28; }
+}
+
+@keyframes attack-flow {
+  to { stroke-dashoffset: -36; }
+}
+
+@keyframes radar-ring {
+  0% { transform: scale(0.85); opacity: 0.75; }
+  100% { transform: scale(1.75); opacity: 0; }
+}
+
+.animate-scan-sweep { animation: scan-sweep 1.8s ease-in-out infinite; }
+.animate-beam-flow { stroke-dasharray: 8 6; animation: beam-flow 0.75s linear infinite; }
+.animate-attack-flow { stroke-dasharray: 10 8; animation: attack-flow 0.45s linear infinite; }
+.animate-radar-ring { animation: radar-ring 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scan-sweep, .animate-beam-flow, .animate-attack-flow, .animate-radar-ring {
+    animation: none;
+  }
+}

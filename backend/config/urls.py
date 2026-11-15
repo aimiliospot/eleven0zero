@@ -4,6 +4,7 @@ from eleven0zero import views
 
 urlpatterns = [
     path("api/state", views.state),
+    path("api/events", views.events),
     path("api/hosts", views.hosts),
     path("api/settings", views.settings),
     path("api/models", views.models),

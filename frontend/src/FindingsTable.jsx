@@ -88,8 +88,8 @@ export default function FindingsTable({ findings, cves, vms }) {
             />
             <Input
               className="h-8 font-mono text-xs"
-              placeholder="Filter CVE…"
-              aria-label="Filter by CVE"
+              placeholder="Filter vulnerability…"
+              aria-label="Filter by vulnerability"
               value={filters.cve}
               onChange={(e) => setFilter("cve")(e.target.value)}
             />
@@ -124,7 +124,7 @@ export default function FindingsTable({ findings, cves, vms }) {
             <TableHeader>
               <TableRow className="bg-muted/25 hover:bg-muted/25">
                 <TableHead>VM</TableHead>
-                <TableHead>CVE</TableHead>
+                <TableHead>Vulnerability</TableHead>
                 <TableHead>Evaluated</TableHead>
                 <TableHead>Result</TableHead>
                 <TableHead />

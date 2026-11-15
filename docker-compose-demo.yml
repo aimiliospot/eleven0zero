@@ -35,7 +35,7 @@ services:
     extends: { file: docker-compose.yml, service: eleven0zero }
     environment:
       <<: *mock-feed
-      DEMO_HOSTS: keen-pond.boxd,free-sky.boxd,cve-2024-6387-lab.boxd  # added to the dashboard on start
+      DEMO_HOSTS: hackathon-vm-1.boxd,hackathon-vm-2.boxd,hackathon-vulnerable-vm.boxd  # added to the dashboard on start
     depends_on:
       mock-cve: { condition: service_started }
       reset-db: { condition: service_completed_successfully }
