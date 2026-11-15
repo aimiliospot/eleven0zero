@@ -18,7 +18,7 @@
 
 ## Why
 
-Dozens of CVEs are published every day. For each one someone has to answer: **Are we affected? What's the fix? Does it work?** That takes hours per CVE. eleven0zero answers all three in minutes, without touching production.
+Dozens of CVEs are published every day. For each one someone has to answer: **Are we affected? What's the fix? Does it work?** That takes hours per CVE. eleven0zero answers all three in seconds, without touching production.
 
 ## How it works
 
