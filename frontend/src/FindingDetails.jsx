@@ -40,11 +40,13 @@ function PipelineStrip({ f }) {
   const vKey = verdictOf(f.verdict);
   const vTone = vKey === "affected" ? "bad" : vKey === "likely" ? "warn" : vKey === "not_affected" ? "ok" : "idle";
   const r = f.remediation;
-  const rTone = !r ? "idle" : r.status === "passed" ? "ok" : (r.status === "running" || r.status === "queued") ? "active" : (r.status === "failed" || r.status === "error") ? "bad" : "idle";
-  const rDetail = !r ? "—" : r.status === "passed" ? "Fix + services verified" : r.snapshot || r.status;
+  const isShutdown = r?.status === "auto_shutdown";
+  const rTone = !r ? "idle" : isShutdown ? "warn" : r.status === "passed" ? "ok" : (r.status === "running" || r.status === "queued") ? "active" : (r.status === "failed" || r.status === "error" || r.status === "shutdown_failed") ? "bad" : "idle";
+  const rState = !r ? "Not run" : isShutdown ? "Auto-shut down" : r.status;
+  const rDetail = !r ? "—" : isShutdown ? `CVSS ${r.cvss} ≥ ${r.threshold} threshold` : r.status === "passed" ? "Fix + services verified" : r.snapshot || r.status;
   const e = f.exploit;
-  const eTone = !e ? "idle" : e.status === "patched" ? "ok" : e.status === "vulnerable" ? "bad" : e.status === "running" ? "active" : "idle";
-  const eDetail = !e ? "—" : e.status === "patched" ? "PoC blocked on clone" : e.status === "vulnerable" ? "PoC succeeded" : e.language || e.status;
+  const eTone = isShutdown ? "warn" : !e ? "idle" : e.status === "patched" ? "ok" : e.status === "vulnerable" ? "bad" : e.status === "running" ? "active" : "idle";
+  const eDetail = isShutdown ? "Skipped — VM stopped immediately" : !e ? "—" : e.status === "patched" ? "PoC blocked on clone" : e.status === "vulnerable" ? "PoC succeeded" : e.language || e.status;
 
   return (
     <ol className="grid gap-2 sm:grid-cols-3" aria-label="Verification pipeline">
@@ -55,8 +57,8 @@ function PipelineStrip({ f }) {
         detail={`${Math.round(f.confidence * 100)}% confidence · ${f.votes?.length || 0} vote${f.votes?.length === 1 ? "" : "s"}`}
         tone={vTone}
       />
-      <Stage step="02" label="Sandbox fix" state={r ? r.status : "Not run"} detail={rDetail} tone={rTone} />
-      <Stage step="03" label="Exploit check" state={e ? e.status : "Not run"} detail={eDetail} tone={eTone} />
+      <Stage step="02" label={isShutdown ? "Containment" : "Sandbox fix"} state={rState} detail={rDetail} tone={rTone} />
+      <Stage step="03" label="Exploit check" state={isShutdown ? "Skipped" : (e ? e.status : "Not run")} detail={eDetail} tone={eTone} />
     </ol>
   );
 }
@@ -91,6 +93,12 @@ export default function FindingDetails({ f, onClose }) {
             <DialogHeader className="gap-1.5">
               <div className="flex flex-wrap items-center gap-2 pr-6">
                 <VerdictBadge verdict={f.verdict} />
+                {f.cvss != null && (
+                  <Badge variant={f.cvss >= 9.0 ? "affected" : f.cvss >= 7.0 ? "likely" : "secondary"}>
+                    CVSS {f.cvss}
+                  </Badge>
+                )}
+                {r?.status === "auto_shutdown" && <Badge variant="likely">⏻ Auto-shut down</Badge>}
                 <span className="font-mono text-xs tabular-nums text-muted-foreground">{Math.round(f.confidence * 100)}% confidence</span>
               </div>
               <DialogTitle className="flex flex-wrap items-center gap-2 font-mono text-base">
@@ -152,8 +160,24 @@ export default function FindingDetails({ f, onClose }) {
               ) : <p className="text-sm text-muted-foreground">None</p>}
             </Section>
 
-            <Section title="Fix test">
+            <Section title={r?.status === "auto_shutdown" || r?.status === "shutdown_failed" ? "Emergency containment" : "Fix test"}>
               {r ? (
+                r.status === "auto_shutdown" || r.status === "shutdown_failed" ? (
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                      Status <Badge variant={r.status === "auto_shutdown" ? "likely" : "affected"}>{r.status === "auto_shutdown" ? "VM shut down immediately" : "Shutdown failed"}</Badge>
+                      {r.cvss != null && r.threshold != null && (
+                        <span className="font-mono text-xs">CVSS {r.cvss} ≥ threshold {r.threshold}</span>
+                      )}
+                    </div>
+                    {r.cmd && (
+                      <div className="rounded-md border border-border/80 bg-background/85 p-3 font-mono text-xs text-foreground">
+                        $ {r.cmd}
+                      </div>
+                    )}
+                    {r.error && <p className="font-mono text-xs text-destructive">{r.error}</p>}
+                  </div>
+                ) : (
                 <div className="grid gap-2 text-sm">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
                     <span className="flex items-center gap-1.5 text-muted-foreground">Status <Badge variant="outline">{r.status}</Badge></span>
@@ -176,6 +200,7 @@ export default function FindingDetails({ f, onClose }) {
                   )}
                   {r.error && <p className="font-mono text-xs text-destructive">{r.error}</p>}
                 </div>
+                )
               ) : <None what="Remediation test" />}
             </Section>
 

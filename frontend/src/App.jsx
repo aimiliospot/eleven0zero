@@ -68,7 +68,7 @@ export default function App() {
         <TabsContent value="graphics" className="min-w-0">
           <Graphics data={data} onAnalyze={analyze} />
         </TabsContent>
-        <TabsContent value="settings" className="min-w-0"><Settings notify={notify} /></TabsContent>
+        <TabsContent value="settings" className="min-w-0"><Settings vms={data.vms} notify={notify} /></TabsContent>
       </main>
       <Toaster position="bottom-center" />
     </Tabs>

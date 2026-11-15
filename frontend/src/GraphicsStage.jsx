@@ -1,4 +1,4 @@
-import { CheckCircle2, Cpu, FileCode2, Radio, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Lock, Power, Radio, ShieldCheck } from "lucide-react";
 import CveLink from "./CveLink.jsx";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -40,6 +40,12 @@ const VM_STYLE = {
     badge: "affected",
     label: "Affected",
     wire: "#fb7185",
+  },
+  shutdown: {
+    card: "border-likely bg-likely/[0.09] text-likely shadow-[0_0_28px_-6px_rgba(251,191,36,0.45)]",
+    badge: "likely",
+    label: "⏻ Shut down",
+    wire: "#fbbf24",
   },
   error: {
     card: "border-border bg-muted/40 text-muted-foreground",
@@ -141,6 +147,12 @@ function ServerNodeArt({ state, compact = false }) {
         {(state === "affected" || state === "likely") && (
           <path d="M44 27v7M44 38.5h.01" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
         )}
+        {state === "shutdown" && (
+          <>
+            <path d="M44 26v6" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
+            <path d="M40.2 28.5a5.5 5.5 0 1 0 7.6 0" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+          </>
+        )}
         {(state === "judging" || state === "scanning") && (
           <circle cx="44" cy="33" r="4" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" />
         )}
@@ -194,16 +206,11 @@ function VmCyberNode({ vm, onSelect }) {
         />
       )}
 
-      <div className="flex items-center justify-between gap-1.5">
+      <div className="flex items-center justify-center">
         <Badge variant={style.badge} className={active ? "border-primary/50 text-primary" : ""}>
           {active && <Spinner aria-hidden="true" />}
           {style.label}
         </Badge>
-        {vm.confidence !== null && (vm.state === "affected" || vm.state === "likely" || vm.state === "not_affected") && (
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-            {vm.confidence}%
-          </span>
-        )}
       </div>
 
       <ServerNodeArt state={vm.state} />
@@ -212,30 +219,23 @@ function VmCyberNode({ vm, onSelect }) {
         <strong className="truncate font-mono text-sm font-semibold text-foreground" title={vm.host}>
           {vm.host}
         </strong>
-        <span className="truncate text-xs text-muted-foreground" title={vm.note}>
+        <span className="truncate text-xs text-muted-foreground" title={vm.os || vm.note}>
           {vm.os || vm.note}
         </span>
-        <div className="flex items-center justify-center gap-2 font-mono text-[11px] tabular-nums text-muted-foreground">
-          <span>{vm.npkg} pkgs</span>
-          {vm.ports?.length > 0 && (
-            <>
-              <span>·</span>
-              <span className="text-primary/90">{vm.ports.length} port{vm.ports.length === 1 ? "" : "s"}</span>
-            </>
-          )}
-        </div>
       </div>
 
-      {(vm.fixVerified || vm.pocBlocked) && (
+      {(vm.fixVerified || vm.pocBlocked || vm.shutDown) && (
         <div className="flex flex-wrap justify-center gap-1 border-t border-border/60 pt-2">
-          {vm.fixVerified && <Badge variant="not_affected">Fix verified</Badge>}
-          {vm.pocBlocked && <Badge variant="not_affected">PoC blocked</Badge>}
+          {vm.fixVerified && <Badge variant="not_affected">Fix tested</Badge>}
+          {vm.pocBlocked && <Badge variant="not_affected">Attack blocked</Badge>}
+          {vm.shutDown && <Badge variant="likely">Auto-shut down</Badge>}
+          {vm.shutDown && <Badge variant="not_affected">Exploit contained</Badge>}
         </div>
       )}
 
       {clickable && (
         <div className="text-center font-mono text-[10px] tracking-wider uppercase text-muted-foreground/80 group-hover:text-foreground">
-          Inspect report →
+          View report →
         </div>
       )}
     </div>
@@ -303,27 +303,27 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
   const cloneActive = cloneVm.visualState === "judging";
 
   const patchStatusLabel = {
-    queued: "Waking up",
-    snapshotting: "Snapshotting",
-    cloning: "Booting clone",
-    planning: "Planning fix",
-    patching: "Applying fix",
-    passed: "Fix verified",
+    queued: "Starting",
+    snapshotting: "Copying server",
+    cloning: "Starting copy",
+    planning: "Preparing update",
+    patching: "Installing update",
+    passed: "Fix tested",
     skipped: "Skipped",
-    failed: "Fix failed",
+    failed: "Update failed",
     error: "Error",
   }[patchAgent.state] || patchAgent.state;
 
   const exploitStatusLabel = {
     standby: "Waiting for fix",
-    coding_poc: "Writing PoC",
-    reusing_poc: "Reusing PoC",
-    spawning_vm: "Booting attacker",
-    attacking: "Attacking clone",
+    coding_poc: "Creating attack",
+    reusing_poc: "Reusing attack",
+    spawning_vm: "Starting attacker",
+    attacking: "Testing attack",
     patched: "Attack blocked",
-    vulnerable: "Clone breached",
-    blocked: "PoC halted",
-    not_feasible: "No net PoC",
+    vulnerable: "Copy breached",
+    blocked: "Attack skipped",
+    not_feasible: "Not applicable",
     error: "Error",
   }[exploitAgent.state] || exploitAgent.state;
 
@@ -337,27 +337,27 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
         </svg>
         <span className="rounded-sm border border-affected/45 bg-card px-2.5 py-0.5 font-mono text-[10px] tracking-wider uppercase text-affected">
           {affectedHosts.length > 1
-            ? `${affectedHosts.length} servers affected → triggers Agent 02`
-            : `${sandbox.sourceHost} affected → triggers Agent 02`}
+            ? `${affectedHosts.length} servers affected → testing fix in safe room`
+            : `${sandbox.sourceHost} affected → testing fix in safe room`}
         </span>
       </div>
 
       <section
-        aria-label="Isolated sandbox multi-agent verification"
+        aria-label="Safe test room verification"
         className="grid gap-3.5 rounded-md border-2 border-dashed border-primary/45 bg-[#070d18]/95 p-4"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 pb-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <ShieldCheck aria-hidden="true" className="size-4 text-primary" />
             <h3 className="font-mono text-xs font-semibold tracking-wider uppercase text-foreground">
-              Isolated sandbox · production VM never touched
+              Safe Test Room · Temporary copies only
             </h3>
             {(cloneVm.destroyed || attackerVm.destroyed) && (
-              <Badge variant="secondary">Disposable sandbox VMs destroyed</Badge>
+              <Badge variant="secondary">Temporary copies deleted after test</Badge>
             )}
           </div>
           {affectedHosts.length > 1 && onSelectSandboxHost && (
-            <div role="tablist" aria-label="Affected servers in sandbox" className="flex flex-wrap gap-1.5">
+            <div role="tablist" aria-label="Affected servers in test room" className="flex flex-wrap gap-1.5">
               {affectedHosts.map((h) => (
                 <button
                   key={h}
@@ -378,9 +378,9 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
           )}
         </div>
 
-        {/* ROW 1: AGENT 02 (PATCH AGENT)  ──►  AGENT 03 (EXPLOIT AGENT) */}
+        {/* ROW 1: AGENT 2 (FIX TESTER)  ──►  AGENT 3 (ATTACK SIMULATOR) */}
         <div className="grid items-stretch gap-3 md:grid-cols-[minmax(0,1fr)_84px_minmax(0,1fr)]">
-          {/* AGENT 02: Patch Engineer Bot */}
+          {/* AGENT 2: Fix Tester */}
           <div className={`grid gap-2.5 rounded-md border-2 p-3.5 transition-all duration-500 ${
             patchPassed ? "border-not-affected/80 bg-not-affected/[0.06]"
               : patchFailed ? "border-affected/80 bg-affected/[0.06]"
@@ -391,7 +391,7 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center justify-between gap-1.5">
                   <span className="font-mono text-[10px] font-semibold tracking-wider uppercase text-primary">
-                    Agent 02 · Patch agent
+                    Agent 2 · Fix Tester
                   </span>
                   <Badge variant={patchPassed ? "not_affected" : patchFailed ? "affected" : "outline"}>
                     {patchAgent.busy && <Spinner aria-hidden="true" />}
@@ -399,29 +399,19 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
                   </Badge>
                 </div>
                 <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                  Clones affected servers into an isolated sandbox and applies fix commands without touching production.
+                  Makes a temporary copy of each affected server and tests the software update there first.
                 </p>
-                <div className="mt-1.5 flex items-center gap-1 font-mono text-[11px] text-foreground">
-                  <Cpu aria-hidden="true" className="size-3 shrink-0 text-primary" />
-                  <span className="truncate">{patchAgent.model}</span>
-                </div>
               </div>
             </div>
 
             <ul className="grid gap-1 border-t border-border/60 pt-2">
-              <StepDot state={step1State} label={`Snapshot & clone ${sandbox.sourceHost}`} />
-              <StepDot state={step2State} label={`Apply upgrade commands (${patchAgent.commandsCount} run)`} />
-              <StepDot state={step3State} label="Verify vulnerability fixed & services healthy" />
+              <StepDot state={step1State} label={`Copy ${sandbox.sourceHost} into safe test room`} />
+              <StepDot state={step2State} label="Install software update on the copy" />
+              <StepDot state={step3State} label="Confirm server & services stay healthy" />
             </ul>
-
-            {patchAgent.currentCmd && (
-              <div className="truncate rounded border border-border/80 bg-background/85 px-2 py-1 font-mono text-[11px] text-primary" title={patchAgent.currentCmd}>
-                $ {patchAgent.currentCmd}
-              </div>
-            )}
           </div>
 
-          {/* Handoff Conduit: Agent 02 -> Agent 03 */}
+          {/* Handoff Conduit: Agent 2 -> Agent 3 */}
           <div aria-hidden="true" className="hidden flex-col items-center justify-center gap-1 text-center md:flex">
             <span className={`font-mono text-[9px] tracking-wider uppercase ${exploitAgent.triggered ? "text-not-affected" : "text-muted-foreground/60"}`}>
               {exploitAgent.triggered ? "Fix passed" : "If fixed"}
@@ -445,11 +435,11 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
               />
             </svg>
             <span className="font-mono text-[9px] tracking-wider uppercase text-muted-foreground">
-              Triggers PoC
+              Tests the fix
             </span>
           </div>
 
-          {/* AGENT 03: Red-Team Exploit Bot */}
+          {/* AGENT 3: Attack Simulator */}
           <div className={`grid gap-2.5 rounded-md border-2 p-3.5 transition-all duration-500 ${
             expStandby ? "border-border/70 bg-card/45 opacity-65"
               : expBlockedAttack ? "border-not-affected/75 bg-not-affected/[0.06]"
@@ -461,7 +451,7 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center justify-between gap-1.5">
                   <span className={`font-mono text-[10px] font-semibold tracking-wider uppercase ${expStandby ? "text-muted-foreground" : "text-affected"}`}>
-                    Agent 03 · Exploit agent
+                    Agent 3 · Attack Simulator
                   </span>
                   <Badge variant={expStandby ? "secondary" : expBlockedAttack ? "not_affected" : exploitAgent.busy || expVulnerable ? "affected" : "likely"}>
                     {exploitAgent.busy && <Spinner aria-hidden="true" />}
@@ -469,48 +459,41 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
                   </Badge>
                 </div>
                 <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                  Generates one proof-of-concept exploit per CVE and fires it from an attacker VM against each patched clone.
+                  Creates one simulated attack for this vulnerability and tests each updated copy to prove the fix works.
                 </p>
-                <div className="mt-1.5 flex items-center gap-1 font-mono text-[11px] text-foreground">
-                  <Cpu aria-hidden="true" className="size-3 shrink-0 text-affected" />
-                  <span className="truncate">{exploitAgent.model}</span>
-                </div>
               </div>
             </div>
 
-            {/* PoC Exploit Script Artifact */}
-            <div className={`flex items-center justify-between gap-2 rounded border px-2.5 py-1.5 font-mono text-[11px] ${
+            {/* Simulated Attack Status Strip */}
+            <div className={`flex items-center justify-between gap-2 rounded border px-2.5 py-1.5 text-xs ${
               exploitAgent.pocStatus === "writing" ? "border-likely/60 bg-likely/10 text-likely"
-                : (exploitAgent.pocStatus === "ready" || exploitAgent.pocStatus === "reused") ? "border-affected/50 bg-affected/10 text-foreground"
+                : (exploitAgent.pocStatus === "ready" || exploitAgent.pocStatus === "reused") ? "border-affected/45 bg-affected/10 text-foreground"
                 : expHaltedEarly ? "border-likely/50 bg-background/80 text-likely"
                 : "border-border/70 bg-background/50 text-muted-foreground"
             }`}>
-              <span className="inline-flex min-w-0 items-center gap-1.5 truncate">
-                <FileCode2 aria-hidden="true" className="size-3.5 shrink-0" />
-                <span className="truncate">{exploitAgent.pocFile}</span>
-              </span>
-              <span className="shrink-0 text-[10px] uppercase tracking-wider">
-                {exploitAgent.pocStatus === "writing" ? "Generating…"
-                  : exploitAgent.pocStatus === "reused" ? "PoC reused"
-                  : exploitAgent.pocStatus === "ready" ? "PoC created"
-                  : exploitAgent.pocStatus === "blocked" ? "Blocked"
-                  : exploitAgent.pocStatus === "not_feasible" ? "Skipped"
-                  : "Pending"}
+              <span className="truncate font-medium">Simulated attack</span>
+              <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider">
+                {exploitAgent.pocStatus === "writing" ? "Creating once…"
+                  : exploitAgent.pocStatus === "reused" ? "Created once · Reused"
+                  : exploitAgent.pocStatus === "ready" ? "Created once"
+                  : exploitAgent.pocStatus === "blocked" ? "Skipped"
+                  : exploitAgent.pocStatus === "not_feasible" ? "Not needed"
+                  : "Waiting"}
               </span>
             </div>
 
             <ul className="grid gap-1 border-t border-border/60 pt-2">
               <StepDot
                 state={expStep1}
-                label={exploitAgent.reusedPoc ? `Reuse CVE PoC (${exploitAgent.pocFile})` : `Create PoC exploit once (${exploitAgent.pocFile})`}
+                label={exploitAgent.reusedPoc ? "Reuse simulated attack created for this threat" : "Create simulated attack once for this threat"}
               />
-              <StepDot state={expStep2} label="Boot isolated Attacker VM" />
-              <StepDot state={expStep3} label="Fire PoC at patched snapshot clone" />
+              <StepDot state={expStep2} label="Start isolated test attacker" />
+              <StepDot state={expStep3} label="Try attack against updated server copy" />
             </ul>
           </div>
         </div>
 
-        {/* VERTICAL CONTROL BEAMS: Agent 02 -> Clone VM | Agent 03 -> Attacker VM */}
+        {/* VERTICAL CONTROL BEAMS: Agent 2 -> Copy | Agent 3 -> Attacker */}
         <div aria-hidden="true" className="hidden grid-cols-[minmax(0,1fr)_84px_minmax(0,1fr)] items-center md:grid">
           <div className="flex flex-col items-center">
             <svg viewBox="0 0 24 34" className="h-8 w-6 overflow-visible" fill="none">
@@ -543,9 +526,9 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
           </div>
         </div>
 
-        {/* ROW 2: SNAPSHOT CLONE VM  ◄══🛡️══  ATTACKER VM */}
+        {/* ROW 2: TEMPORARY SERVER COPY  ◄══🛡️══  SIMULATED ATTACKER */}
         <div className="grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_140px_minmax(0,1fr)]">
-          {/* Left VM: Snapshot Clone */}
+          {/* Left: Temporary Server Copy */}
           <div className={`relative overflow-hidden rounded-md border-2 p-3 transition-all duration-500 ${cloneStyle.card}`}>
             {cloneActive && (
               <div
@@ -555,22 +538,22 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
             )}
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono text-[10px] font-semibold tracking-wider uppercase">
-                Snapshot clone VM
+                Temporary Copy
               </span>
               <Badge variant={cloneStyle.badge}>
                 {cloneActive && <Spinner aria-hidden="true" />}
-                {patchPassed ? "Patched" : cloneActive ? "Patching" : patchFailed ? "Unpatched" : "Affected copy"}
+                {patchPassed ? "Updated & healthy" : cloneActive ? "Updating…" : patchFailed ? "Update failed" : "At risk"}
               </Badge>
             </div>
             <div className="mt-1.5 flex items-center gap-3">
               <ServerNodeArt state={cloneVm.visualState} compact />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-mono text-sm font-semibold text-foreground">{cloneVm.name}</div>
-                <div className="truncate font-mono text-[11px] text-muted-foreground">
-                  from {cloneVm.snapshotName}
+                <div className="truncate font-mono text-sm font-semibold text-foreground">Copy of {sandbox.sourceHost}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  Isolated from live traffic
                 </div>
                 {cloneVm.destroyed && (
-                  <span className="font-mono text-[10px] uppercase text-muted-foreground">Destroyed after test</span>
+                  <span className="font-mono text-[10px] uppercase text-muted-foreground">Deleted after test</span>
                 )}
               </div>
             </div>
@@ -623,19 +606,19 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
                 </svg>
                 <Badge variant={expBlockedAttack ? "not_affected" : expVulnerable ? "affected" : "affected"}>
                   {attackerVm.attacking && <Spinner aria-hidden="true" />}
-                  {expBlockedAttack ? "Attack blocked" : expVulnerable ? "Clone breached" : "Firing PoC…"}
+                  {expBlockedAttack ? "Attack blocked" : expVulnerable ? "Copy breached" : "Testing attack…"}
                 </Badge>
               </>
             ) : (
               <span className="px-1 font-mono text-[10px] leading-snug text-muted-foreground">
                 {expHaltedEarly
-                  ? (exploitAgent.note || "PoC stopped before VM boot")
-                  : "Attack runs once PoC & Attacker VM boot"}
+                  ? "No network attack needed"
+                  : "Simulated attack runs once update passes"}
               </span>
             )}
           </div>
 
-          {/* Right VM: Ephemeral Attacker VM */}
+          {/* Right: Simulated Attacker */}
           <div className={`rounded-md border-2 p-3 transition-all duration-500 ${
             !attackerVm.spawned ? "border-border/60 bg-card/40 text-muted-foreground opacity-65"
               : expBlockedAttack ? "border-border bg-card/85 text-muted-foreground"
@@ -643,22 +626,22 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
           }`}>
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono text-[10px] font-semibold tracking-wider uppercase">
-                Attacker VM
+                Simulated Attacker
               </span>
               <Badge variant={!attackerVm.spawned ? "secondary" : expBlockedAttack ? "not_affected" : "affected"}>
                 {attackerVm.attacking && <Spinner aria-hidden="true" />}
-                {!attackerVm.spawned ? "Not booted" : expBlockedAttack ? "Neutralized" : attackerVm.attacking ? "Firing PoC" : "Booting"}
+                {!attackerVm.spawned ? "Waiting" : expBlockedAttack ? "Stopped by fix" : attackerVm.attacking ? "Testing attack" : "Starting"}
               </Badge>
             </div>
             <div className="mt-1.5 flex items-center gap-3">
               <ServerNodeArt state={!attackerVm.spawned ? "idle" : expBlockedAttack ? "idle" : "affected"} compact />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-mono text-sm font-semibold text-foreground">{attackerVm.name}</div>
-                <div className="truncate font-mono text-[11px] text-muted-foreground">
-                  {attackerVm.spawned ? `Runs ${exploitAgent.pocFile} over private net` : "Isolated private network"}
+                <div className="truncate font-mono text-sm font-semibold text-foreground">Test Attacker</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  Private test room only
                 </div>
                 {attackerVm.destroyed && (
-                  <span className="font-mono text-[10px] uppercase text-muted-foreground">Destroyed after test</span>
+                  <span className="font-mono text-[10px] uppercase text-muted-foreground">Deleted after test</span>
                 )}
               </div>
             </div>
@@ -669,10 +652,35 @@ function SandboxArena({ sandbox, onSelectSandboxHost }) {
   );
 }
 
+function ContainmentBanner({ containment, cveId }) {
+  if (!containment) return null;
+  const { hosts, cvss, threshold } = containment;
+  return (
+    <div
+      role="alert"
+      className="animate-in fade-in slide-in-from-bottom-2 flex items-start gap-3 rounded-md border-2 border-likely/60 bg-likely/[0.08] p-4"
+    >
+      <span aria-hidden="true" className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-likely/50 bg-likely/15 text-likely">
+        <Power className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1 text-sm">
+        <div className="font-mono text-xs font-semibold tracking-wider uppercase text-likely">
+          Immediate Auto-Shutdown Executed
+        </div>
+        <p className="mt-0.5 text-foreground">
+          {cveId}
+          {cvss != null && threshold != null ? ` has criticality CVSS ${cvss} (threshold ≥ ${threshold})` : " exceeded your criticality threshold"}.{" "}
+          <strong>{hosts.join(", ")}</strong> {hosts.length === 1 ? "was" : "were"} shut down immediately to protect your network (Safe Test Room skipped).
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Main Cyber Stage ---------- */
 
 export default function GraphicsStage({ scene, onSelectFinding, onSelectSandboxHost }) {
-  const { cve, cveId, juryBusy, juryModels, judgingHost, vmNodes, sandbox } = scene;
+  const { cve, cveId, juryBusy, judgingHost, vmNodes, sandbox, containment } = scene;
   const gridCols = vmNodes.length <= 1
     ? "sm:grid-cols-1 max-w-xs mx-auto"
     : vmNodes.length === 2
@@ -683,7 +691,7 @@ export default function GraphicsStage({ scene, onSelectFinding, onSelectSandboxH
 
   return (
     <Card className="grid min-w-0 gap-4 border-border/90 bg-card/70 p-4 sm:p-5">
-      {/* Top Tier: Threat Feed -> Agent 01 (AI Jury) */}
+      {/* Top Tier: New Threat -> Agent 1 (Security Inspector) */}
       <div className="grid items-stretch gap-3 md:grid-cols-[minmax(0,1fr)_56px_minmax(0,1.15fr)]">
         <div className={`relative flex items-center gap-3.5 rounded-md border p-3.5 ${cveId ? "border-primary/45 bg-background/80" : "border-border bg-background/50"}`}>
           <div className={`relative flex size-11 shrink-0 items-center justify-center rounded-full border ${cveId ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
@@ -694,19 +702,24 @@ export default function GraphicsStage({ scene, onSelectFinding, onSelectSandboxH
           </div>
           <div className="min-w-0 flex-1">
             <div className="font-mono text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
-              Threat feed
+              New security threat
             </div>
             {cveId ? (
               <>
-                <div className="font-mono text-sm font-semibold">
+                <div className="flex flex-wrap items-center gap-1.5 font-mono text-sm font-semibold">
                   <CveLink id={cveId} />
+                  {cve?.cvss != null && (
+                    <Badge variant={cve.cvss >= 9.0 ? "affected" : cve.cvss >= 7.0 ? "likely" : "secondary"}>
+                      CVSS {cve.cvss}
+                    </Badge>
+                  )}
                 </div>
                 <div className="truncate text-xs text-muted-foreground" title={cve?.title}>
                   {cve?.title || "Published vulnerability record"}
                 </div>
               </>
             ) : (
-              <div className="text-xs text-muted-foreground">Listening for new CVEs…</div>
+              <div className="text-xs text-muted-foreground">Listening for new threats…</div>
             )}
           </div>
         </div>
@@ -731,7 +744,7 @@ export default function GraphicsStage({ scene, onSelectFinding, onSelectSandboxH
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-[10px] font-semibold tracking-wider uppercase text-primary">
-                Agent 01 · Jury agent
+                Agent 1 · Security Inspector
               </span>
               {judgingHost ? (
                 <Badge variant="outline" className="border-primary/45 text-primary">
@@ -743,23 +756,13 @@ export default function GraphicsStage({ scene, onSelectFinding, onSelectSandboxH
               ) : cveId ? (
                 <Badge variant="not_affected">
                   <CheckCircle2 aria-hidden="true" className="size-3" />
-                  Done
+                  All checked
                 </Badge>
               ) : null}
             </div>
             <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-              Inspects each server&apos;s packages, services, and open ports to vote whether it is affected.
+              Checks each server to see if it uses the vulnerable software.
             </p>
-            {juryModels.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {juryModels.map((m) => (
-                  <span key={m} className="inline-flex items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[11px] text-foreground">
-                    <Cpu aria-hidden="true" className="size-3 text-primary" />
-                    {m}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -768,18 +771,25 @@ export default function GraphicsStage({ scene, onSelectFinding, onSelectSandboxH
 
       {/* Middle Tier: Monitored Production VMs */}
       {vmNodes.length > 0 ? (
-        <div className={`grid w-full gap-3.5 ${gridCols}`}>
-          {vmNodes.map((vm) => (
-            <VmCyberNode key={vm.host} vm={vm} onSelect={onSelectFinding} />
-          ))}
+        <div className="grid gap-2.5">
+          <div className="flex items-center gap-1.5 font-mono text-[11px] font-semibold tracking-wider uppercase text-muted-foreground">
+            <Lock aria-hidden="true" className="size-3.5 text-not-affected" />
+            <span>Your Live Servers · Never touched during testing</span>
+          </div>
+          <div className={`grid w-full gap-3.5 ${gridCols}`}>
+            {vmNodes.map((vm) => (
+              <VmCyberNode key={vm.host} vm={vm} onSelect={onSelectFinding} />
+            ))}
+          </div>
         </div>
       ) : (
         <div className="rounded-md border border-dashed border-border bg-background/40 px-4 py-10 text-center text-sm text-muted-foreground">
-          No VMs added yet. Add a host on the Dashboard tab to watch live vulnerability checks here.
+          No servers added yet. Add a server on the Dashboard tab to watch live security checks here.
         </div>
       )}
 
-      {/* Bottom Tier: Agent 02 (Patch) + Agent 03 (Exploit) + Sandbox VMs */}
+      {/* Bottom Tier: Safe Test Room OR Immediate Containment Banner */}
+      <ContainmentBanner containment={containment} cveId={cveId} />
       <SandboxArena sandbox={sandbox} onSelectSandboxHost={onSelectSandboxHost} />
     </Card>
   );

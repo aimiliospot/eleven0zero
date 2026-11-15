@@ -138,9 +138,12 @@ SCHEMA = {
         "confidence": {"type": "number"},
         "evidence": {"type": "string"},
         "actions": {"type": "array", "items": {"type": "string"}},
+        "estimated_cvss": {"type": "number"},
     },
     "required": ["verdict", "confidence", "evidence", "actions"],
 }
+
+DEFAULT_CRITICALITY_THRESHOLD = 9.0
 
 SEVERITY = {"affected": 2, "likely": 1, "not_affected": 0}
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
@@ -216,9 +219,29 @@ def aggregate(votes):
     verdict = max(counts, key=lambda k: (counts[k], SEVERITY[k]))
     agree = [v for v in votes if v["verdict"] == verdict]
     best = max(agree, key=lambda v: v["confidence"])
-    return {"verdict": verdict, "confidence": sum(v["confidence"] for v in agree) / n,
-            "evidence": (f"{len(agree)}/{n} models agree. " if n > 1 else "") + best["evidence"],
-            "actions": list(dict.fromkeys(a for v in agree for a in v["actions"]))}
+    est = [float(v["estimated_cvss"]) for v in votes if isinstance(v.get("estimated_cvss"), (int, float)) and not isinstance(v.get("estimated_cvss"), bool)]
+    out = {"verdict": verdict, "confidence": sum(v["confidence"] for v in agree) / n,
+           "evidence": (f"{len(agree)}/{n} models agree. " if n > 1 else "") + best["evidence"],
+           "actions": list(dict.fromkeys(a for v in agree for a in v["actions"]))}
+    if est:
+        out["estimated_cvss"] = round(min(10.0, max(0.0, sum(est) / len(est))), 1)
+    return out
+
+
+def cve_cvss(record):
+    """Highest official CVSS baseScore (0.0-10.0) in CNA or ADP metrics, or None if not published yet."""
+    containers = record.get("containers") or {}
+    blocks = [containers.get("cna") or {}, *(containers.get("adp") or [])]
+    scores = []
+    for block in blocks:
+        for m in block.get("metrics") or []:
+            if not isinstance(m, dict):
+                continue
+            for key in ("cvssV4_0", "cvssV3_1", "cvssV3_0", "cvssV2_0"):
+                score = (m.get(key) or {}).get("baseScore")
+                if isinstance(score, (int, float)) and not isinstance(score, bool) and 0.0 <= float(score) <= 10.0:
+                    scores.append(float(score))
+    return round(max(scores), 1) if scores else None
 
 
 def description(record):
@@ -235,6 +258,7 @@ Consider whether the vulnerable component is actually reachable (listening ports
 verdict: affected (version clearly in range), likely (probably in range / can't fully confirm), not_affected.
 confidence: 0..1. evidence: 1-3 sentences citing versions. actions: concrete remediation steps for THIS VM
 (exact upgrade commands for its package manager, config mitigations, temporary workarounds).
+estimated_cvss: 0..10 CVSS base-score estimate for the CVE based on its impact and attack vector.
 
 CVE: {record['cveMetadata']['cveId']} - {cna.get('title', '')}
 Description: {description(record)}
@@ -314,10 +338,21 @@ def evaluate_host(record, host):
         m = matches(cve_terms(record), vm_names(vm.inventory))
         emit(cve_id, "judging", f"checking {host}: {len(m)} matching component(s)", host)
         f = judge(record, host, vm.inventory, m)
+        cvss = cve_cvss(record)
+        if cvss is None:
+            cve_row = Cve.objects.filter(id=cve_id).only("cvss").first()
+            cvss = cve_row.cvss if cve_row else None
+        if cvss is None and f.get("estimated_cvss") is not None:
+            cvss = round(min(10.0, max(0.0, float(f["estimated_cvss"]))), 1)
+            Cve.objects.filter(id=cve_id, cvss__isnull=True).update(cvss=cvss)
         save_finding(cve_id, host, f)
         emit(cve_id, "verdict", f"{f['verdict']} ({f['confidence']:.0%})", host)
         if f["verdict"] == "affected":
-            queue_remediation(cve_id, host)
+            threshold = criticality_threshold()
+            if threshold is not None and cvss is not None and cvss >= threshold and can_auto_shutdown(host):
+                shutdown_vm(cve_id, host, cvss, threshold)
+            else:
+                queue_remediation(cve_id, host)
     except Exception as e:
         print(f"[judge] {cve_id} {host}: {e}")
         save_finding(cve_id, host, {"verdict": "error", "confidence": 0, "evidence": str(e)[:500], "actions": []})
@@ -335,7 +370,7 @@ def store(record):
     if meta.get("state") != "PUBLISHED":
         return False
     Cve.objects.update_or_create(id=meta["cveId"], defaults=dict(
-        published=meta.get("datePublished"), record=record,
+        published=meta.get("datePublished"), cvss=cve_cvss(record), record=record,
         title=record["containers"]["cna"].get("title") or description(record)[:120]))
     return True
 
@@ -381,6 +416,56 @@ def remediation_model():
 def exploitation_model():
     s = Setting.objects.filter(pk=1).first()
     return (s and s.exploitation_model) or (VENICE + VENICE_MODEL)
+
+
+def criticality_threshold():
+    s = Setting.objects.filter(pk=1).first()
+    return DEFAULT_CRITICALITY_THRESHOLD if s is None else s.criticality_threshold
+
+
+def shutdown_hosts():
+    """Hosts selected for immediate auto-shutdown (None in DB => all monitored VMs)."""
+    all_hosts = list(Vm.objects.order_by("host").values_list("host", flat=True))
+    s = Setting.objects.filter(pk=1).first()
+    if s is None or s.shutdown_hosts is None:
+        return all_hosts
+    allowed = set(s.shutdown_hosts)
+    return [h for h in all_hosts if h in allowed]
+
+
+def can_auto_shutdown(host):
+    s = Setting.objects.filter(pk=1).first()
+    if s is None or s.shutdown_hosts is None:
+        return True
+    return host in s.shutdown_hosts
+
+
+def shutdown_vm(cve_id, host, cvss, threshold):
+    """Immediately power off an affected VM (.boxd or SSH) when CVE criticality >= threshold."""
+    m = BOXD_HOST.fullmatch(host)
+    cmd = f"boxd machine stop {m.group(1)}" if m else f"ssh {host} -- sudo -n poweroff"
+    try:
+        if m and shutil.which("boxd"):
+            machine = m.group(1)
+            region = machine_region(machine)
+            boxd_ok("machine", "stop", machine, region=region)
+        else:
+            r = subprocess.run(
+                ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                 "-o", "StrictHostKeyChecking=accept-new", "--", ssh_target(host), "sudo -n poweroff"],
+                capture_output=True, text=True, timeout=30,
+            )
+            err_lower = (r.stderr or "").lower()
+            if r.returncode != 0 and "closed by remote host" not in err_lower and "connection reset" not in err_lower:
+                raise RuntimeError((r.stderr or r.stdout or f"ssh rc={r.returncode}").strip()[-300:])
+        rem = {"status": "auto_shutdown", "cvss": cvss, "threshold": threshold, "cmd": cmd}
+        Finding.objects.filter(cve_id=cve_id, vm_id=host).update(remediation=rem)
+        emit(cve_id, "auto_shutdown", f"cvss={cvss} >= {threshold}: {host} shut down immediately ({cmd})", host)
+    except Exception as e:
+        print(f"[auto_shutdown] {cve_id} {host}: {e}")
+        rem = {"status": "shutdown_failed", "cvss": cvss, "threshold": threshold, "cmd": cmd, "error": str(e)[:300]}
+        Finding.objects.filter(cve_id=cve_id, vm_id=host).update(remediation=rem)
+        emit(cve_id, "error", f"auto-shutdown failed on {host}: {str(e)[:120]}", host)
 
 
 def boxd(*args, timeout=300, region=None):

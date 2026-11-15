@@ -186,9 +186,87 @@ class SettingsApi(TestCase):
         assert engine.exploitation_model() == "venice:deepseek-v4-1-flash-1017-uncensored"
         assert put({"models": ["gemini-a"], "exploitation_model": "gemini-4-carbon"}).status_code == 200
         assert engine.exploitation_model() == "gemini-4-carbon"
+        assert self.client.get("/api/settings").json()["criticality_threshold"] == 9.0
+        for bad_ct in (0, -1, 10.1, "high", True):
+            assert put({"models": ["gemini-a"], "criticality_threshold": bad_ct}).status_code == 400, bad_ct
+        assert put({"models": ["gemini-a"], "criticality_threshold": 7.5}).status_code == 200
+        assert engine.criticality_threshold() == 7.5
+        Vm.objects.create(host="vm1.boxd")
+        Vm.objects.create(host="vm2.boxd")
+        assert self.client.get("/api/settings").json()["shutdown_hosts"] == ["vm1.boxd", "vm2.boxd"]
+        assert put({"models": ["gemini-a"], "shutdown_hosts": ["-oBad"]}).status_code == 400
+        assert put({"models": ["gemini-a"], "shutdown_hosts": ["vm2.boxd"]}).status_code == 200
+        assert self.client.get("/api/settings").json()["shutdown_hosts"] == ["vm2.boxd"]
+        assert not engine.can_auto_shutdown("vm1.boxd") and engine.can_auto_shutdown("vm2.boxd")
+        assert put({"models": ["gemini-a"], "criticality_threshold": None}).status_code == 200
+        assert engine.criticality_threshold() is None
         assert engine.VENICE + engine.VENICE_MODEL in self.client.get("/api/models").json()["models"]
         strict = type(self.client)(enforce_csrf_checks=True)
         assert strict.put("/api/settings", {"models": ["m"]}, content_type="application/json").status_code == 403
+
+
+class AutoShutdown(TransactionTestCase):
+    def test_cvss_above_threshold_shuts_down_boxd_and_ssh_vms_immediately(self):
+        import subprocess
+        from unittest.mock import patch
+        inv = {"packages": {"openssh-server": "1:9.2p1"}}
+        Vm.objects.create(host="gw.boxd", inventory=inv)
+        Vm.objects.create(host="root@10.0.0.5", inventory=inv)
+        rec_crit = {
+            "cveMetadata": {"cveId": "CVE-2024-6387", "state": "PUBLISHED"},
+            "containers": {"cna": {
+                "title": "regreSSHion",
+                "metrics": [{"cvssV3_1": {"baseScore": 9.8}}],
+                "affected": [{"packageName": "openssh"}],
+            }},
+        }
+        engine.store(rec_crit)
+        assert Cve.objects.get(id="CVE-2024-6387").cvss == 9.8
+
+        ssh_res = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch("shutil.which", return_value="/usr/bin/boxd"), \
+             patch.object(engine, "machine_region", return_value="eu-1"), \
+             patch.object(engine, "boxd_ok") as boxd_mock, \
+             patch("subprocess.run", return_value=ssh_res) as ssh_mock, \
+             patch.object(engine, "queue_remediation") as rem_mock, \
+             patch.object(engine, "judge", return_value={"verdict": "affected", "confidence": .99, "evidence": "vuln", "actions": []}):
+            engine.evaluate_host(rec_crit, "gw.boxd")
+            engine.evaluate_host(rec_crit, "root@10.0.0.5")
+            assert rem_mock.call_count == 0
+            boxd_mock.assert_called_once_with("machine", "stop", "gw", region="eu-1")
+            assert ssh_mock.call_count == 1 and "poweroff" in ssh_mock.call_args[0][0][-1]
+
+        f_boxd = Finding.objects.get(cve_id="CVE-2024-6387", vm_id="gw.boxd")
+        f_ssh = Finding.objects.get(cve_id="CVE-2024-6387", vm_id="root@10.0.0.5")
+        assert f_boxd.remediation["status"] == "auto_shutdown" and f_boxd.remediation["cvss"] == 9.8
+        assert f_ssh.remediation["status"] == "auto_shutdown"
+        ev = self.client.get("/api/events").json()["events"]
+        assert [e["kind"] for e in ev if e["kind"] == "auto_shutdown"] == ["auto_shutdown", "auto_shutdown"]
+
+        # Unselected VM stays online and falls back to Safe Test Room even when CVSS >= threshold
+        from .models import Setting
+        Setting.objects.update_or_create(pk=1, defaults={"models": ["gemini-a"], "criticality_threshold": 9.0, "shutdown_hosts": ["gw.boxd"]})
+        with patch.object(engine, "shutdown_vm") as stop_mock, \
+             patch.object(engine, "queue_remediation") as rem_mock, \
+             patch.object(engine, "judge", return_value={"verdict": "affected", "confidence": .99, "evidence": "vuln", "actions": []}):
+            engine.evaluate_host(rec_crit, "gw.boxd")
+            engine.evaluate_host(rec_crit, "root@10.0.0.5")
+            assert stop_mock.call_count == 1 and stop_mock.call_args[0][1] == "gw.boxd"
+            assert rem_mock.call_count == 1 and rem_mock.call_args[0][1] == "root@10.0.0.5"
+        rec_mod = {
+            "cveMetadata": {"cveId": "CVE-2024-22195", "state": "PUBLISHED"},
+            "containers": {"cna": {
+                "title": "Jinja2 XSS",
+                "metrics": [{"cvssV3_1": {"baseScore": 6.1}}],
+                "affected": [{"packageName": "jinja2"}],
+            }},
+        }
+        engine.store(rec_mod)
+        with patch.object(engine, "shutdown_vm") as stop_mock, \
+             patch.object(engine, "queue_remediation") as rem_mock, \
+             patch.object(engine, "judge", return_value={"verdict": "affected", "confidence": .95, "evidence": "vuln", "actions": []}):
+            engine.evaluate_host(rec_mod, "gw.boxd")
+            assert stop_mock.call_count == 0 and rem_mock.call_count == 1
 
 
 class DemoHosts(TestCase):

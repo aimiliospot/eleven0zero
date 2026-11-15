@@ -6,8 +6,10 @@ class Setting(models.Model):
     """Singleton (pk=1). API keys are not stored here: they come from GOOGLE_API_KEY / VENICE_API_KEY."""
     remediation_model = models.CharField(max_length=72, blank=True)  # writes the fix commands run on the snapshot clone; empty -> first of models
     exploitation_model = models.CharField(max_length=72, blank=True)  # writes the exploit PoC run against the patched clone; empty -> VENICE_MODEL
+    criticality_threshold = models.FloatField(null=True, blank=True, default=9.0)  # CVSS >= threshold -> shut down selected affected VMs immediately; None -> off
+    shutdown_hosts = models.JSONField(null=True, blank=True, default=None)  # VMs allowed to auto-shutdown; None -> all monitored VMs
     models = models.JSONField(default=list)  # model ids to ask ("venice:" prefix -> Venice AI); empty -> GEMINI_MODEL env default
-    # ponytail: remediation_model and exploitation_model must stay above `models`, the field name shadows the django module in this class body
+    # ponytail: fields using `models.*` must stay above `models`, the field name shadows the django module in this class body
 
 
 class Vm(models.Model):
@@ -21,6 +23,7 @@ class Cve(models.Model):
     id = models.CharField(max_length=32, primary_key=True)
     published = models.CharField(max_length=40, null=True)
     title = models.TextField(blank=True)
+    cvss = models.FloatField(null=True, blank=True)
     record = models.JSONField()
     status = models.CharField(max_length=16, default="new")  # new | skipped | evaluating | evaluated
     seen_at = models.DateTimeField(default=timezone.now)

@@ -20,7 +20,7 @@ def payload(request):
 @ensure_csrf_cookie  # the React app polls this first, which hands it the CSRF cookie
 @require_http_methods(["GET"])
 def state(request):
-    findings = [dict(cve_id=f.cve_id, host=f.vm_id, title=f.cve.title, verdict=f.verdict, confidence=f.confidence,
+    findings = [dict(cve_id=f.cve_id, host=f.vm_id, title=f.cve.title, cvss=f.cve.cvss, verdict=f.verdict, confidence=f.confidence,
                      evidence=f.evidence, actions=f.actions, votes=f.votes, remediation=f.remediation,
                      exploit=f.exploit or (f.remediation or {}).get("exploit"),
                      created_at=f.created_at, cve_status=f.cve.status)
@@ -31,7 +31,7 @@ def state(request):
         vms.append(dict(host=v.host, collected_at=v.collected_at, error=v.error,
                         os=inv.get("os", {}).get("PRETTY_NAME", ""), npkg=len(inv.get("packages", {})),
                         ports=[f"{p['process'] or '?'}@{p['local']}" for p in inv.get("ports", []) if p["exposed"]]))
-    cves = list(Cve.objects.order_by("-seen_at").values("id", "title", "status", "seen_at")[:30])
+    cves = list(Cve.objects.order_by("-seen_at").values("id", "title", "cvss", "status", "seen_at")[:30])
     return JsonResponse({"findings": findings, "vms": vms, "cves": cves})
 
 
@@ -54,6 +54,8 @@ def settings_json():
         "models": engine.selected_models(),
         "remediation_model": engine.remediation_model(),
         "exploitation_model": engine.exploitation_model(),
+        "criticality_threshold": engine.criticality_threshold(),
+        "shutdown_hosts": engine.shutdown_hosts(),
     }
 
 
@@ -70,12 +72,28 @@ def settings(request):
         em = str(d.get("exploitation_model", "")).strip()
         if em and not MODEL_RE.fullmatch(em):
             return JsonResponse({"error": "bad exploitation model id"}, status=400)
+        has_ct = "criticality_threshold" in d
+        ct_val = d.get("criticality_threshold")
+        if has_ct and ct_val is not None:
+            if isinstance(ct_val, bool) or not isinstance(ct_val, (int, float)) or not (0.1 <= float(ct_val) <= 10.0):
+                return JsonResponse({"error": "criticality threshold must be null or 0.1-10.0"}, status=400)
+            ct_val = round(float(ct_val), 1)
+        has_sh = "shutdown_hosts" in d
+        sh_val = d.get("shutdown_hosts")
+        if has_sh and sh_val is not None:
+            if not (isinstance(sh_val, list) and all(isinstance(h, str) and engine.HOST_RE.fullmatch(h) for h in sh_val)):
+                return JsonResponse({"error": "shutdown_hosts must be null or a list of valid hosts"}, status=400)
+            sh_val = list(dict.fromkeys(sh_val))
         s, _ = Setting.objects.get_or_create(pk=1)
         s.models = list(dict.fromkeys(models))
         if "remediation_model" in d:
             s.remediation_model = rm
         if "exploitation_model" in d:
             s.exploitation_model = em
+        if has_ct:
+            s.criticality_threshold = ct_val
+        if has_sh:
+            s.shutdown_hosts = sh_val
         s.save()
     return JsonResponse(settings_json())
 

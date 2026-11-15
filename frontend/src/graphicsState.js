@@ -43,6 +43,10 @@ function synthesizeEvents(cveId, data) {
   for (const f of findings.filter((x) => x.verdict === "affected" && x.remediation)) {
     const r = f.remediation;
     const host = f.host;
+    if (r.status === "auto_shutdown") {
+      push("auto_shutdown", `cvss=${r.cvss ?? "?"} >= ${r.threshold ?? "?"}: ${host} shut down immediately`, host);
+      continue;
+    }
     const clone = r.clone || "wdt-clone";
     if (r.snapshot) push("snapshot", `boxd snapshots save ${host.split(".")[0]} ${r.snapshot}`, host);
     if (r.snapshot || r.commands?.length || r.status === "passed" || r.status === "failed") {
@@ -107,69 +111,172 @@ export function timelineForCve(cveId, data, rawEvents) {
 }
 
 const AGENT_TAG = {
-  arrived: { label: "FEED", tone: "cyan" },
+  arrived: { label: "NEW THREAT", tone: "cyan" },
   scan: { label: "SCANNER", tone: "muted" },
   scan_ok: { label: "SCANNER", tone: "ok" },
-  judging: { label: "AGENT 01 · JURY", tone: "cyan" },
-  model: { label: "AGENT 01 · JURY", tone: "cyan" },
-  verdict: { label: "AGENT 01 · JURY", tone: "cyan" },
-  done: { label: "AGENT 01 · JURY", tone: "muted" },
-  snapshot: { label: "AGENT 02 · PATCH", tone: "emerald" },
-  clone: { label: "AGENT 02 · PATCH", tone: "emerald" },
-  plan: { label: "AGENT 02 · PATCH", tone: "emerald" },
-  fix_cmd: { label: "AGENT 02 · PATCH", tone: "emerald" },
-  fix_out: { label: "AGENT 02 · PATCH", tone: "emerald" },
-  fix_done: { label: "AGENT 02 · PATCH", tone: "emerald" },
-  poc_gen: { label: "AGENT 03 · EXPLOIT", tone: "rose" },
-  poc_reuse: { label: "AGENT 03 · EXPLOIT", tone: "rose" },
-  attacker: { label: "AGENT 03 · EXPLOIT", tone: "rose" },
-  attack: { label: "AGENT 03 · EXPLOIT", tone: "rose" },
-  poc_done: { label: "AGENT 03 · EXPLOIT", tone: "rose" },
-  cleanup: { label: "SANDBOX", tone: "muted" },
+  judging: { label: "AGENT 1 · SECURITY INSPECTOR", tone: "cyan" },
+  model: { label: "AGENT 1 · SECURITY INSPECTOR", tone: "cyan" },
+  verdict: { label: "AGENT 1 · SECURITY INSPECTOR", tone: "cyan" },
+  done: { label: "AGENT 1 · SECURITY INSPECTOR", tone: "muted" },
+  snapshot: { label: "AGENT 2 · FIX TESTER", tone: "emerald" },
+  clone: { label: "AGENT 2 · FIX TESTER", tone: "emerald" },
+  plan: { label: "AGENT 2 · FIX TESTER", tone: "emerald" },
+  fix_cmd: { label: "AGENT 2 · FIX TESTER", tone: "emerald" },
+  fix_out: { label: "AGENT 2 · FIX TESTER", tone: "emerald" },
+  fix_done: { label: "AGENT 2 · FIX TESTER", tone: "emerald" },
+  poc_gen: { label: "AGENT 3 · ATTACK SIMULATOR", tone: "rose" },
+  poc_reuse: { label: "AGENT 3 · ATTACK SIMULATOR", tone: "rose" },
+  attacker: { label: "AGENT 3 · ATTACK SIMULATOR", tone: "rose" },
+  attack: { label: "AGENT 3 · ATTACK SIMULATOR", tone: "rose" },
+  poc_done: { label: "AGENT 3 · ATTACK SIMULATOR", tone: "rose" },
+  auto_shutdown: { label: "AUTO-PROTECTION", tone: "warn" },
+  cleanup: { label: "SAFE TEST ROOM", tone: "muted" },
   error: { label: "ALERT", tone: "rose" },
 };
 
+function humanizeModelVote(text = "", host = "") {
+  const model = parseModelPrefix(text) || "AI model";
+  const rest = text.slice(model.length + 2).trim();
+  if (rest.startsWith("error")) return `Agent 1 (${model}) could not complete its check at ${host}.`;
+  if (rest.startsWith("affected")) return `Agent 1 (${model}) voted that ${host} is affected.`;
+  if (rest.startsWith("likely")) return `Agent 1 (${model}) voted that ${host} is likely affected.`;
+  if (rest.startsWith("not_affected")) return `Agent 1 (${model}) voted that ${host} is safe.`;
+  return `Agent 1 (${model}) finished checking ${host}.`;
+}
+
 function formatLine(e, active) {
+  const host = e.host || "server";
+  const cve = e.cve_id || "the vulnerability";
+  const isSafeVerdict = e.text.startsWith("not_affected");
+  const isAffectedVerdict = e.text.startsWith("affected");
+  const isLikelyVerdict = e.text.startsWith("likely");
+
   const map = {
-    arrived: { comment: "Incoming vulnerability alert from feed", prompt: "$", cmd: `watch-cve ${e.cve_id}  # ${e.text}`, tone: "cyan" },
-    scan: { comment: `Collecting inventory on ${e.host}`, prompt: "$", cmd: e.text, tone: "cyan" },
-    scan_ok: { comment: null, prompt: "✓", cmd: `[${e.host}] ${e.text}`, tone: "ok" },
-    judging: { comment: `Agent 01 inspecting ${e.host} against ${e.cve_id}`, prompt: "$", cmd: `judge --host ${e.host} --cve ${e.cve_id}  # ${e.text}`, tone: "cyan" },
-    model: { comment: null, prompt: ">", cmd: `[${e.host}] ${e.text}`, tone: "muted" },
-    verdict: {
-      comment: null,
-      prompt: e.text.startsWith("not_affected") ? "✓" : "!",
-      cmd: `[${e.host}] verdict: ${e.text}`,
-      tone: e.text.startsWith("affected") ? "bad" : e.text.startsWith("likely") ? "warn" : "ok",
+    arrived: {
+      prompt: "•",
+      cmd: `New vulnerability ${cve} arrived. Waking up Agent 1 to check all servers.`,
+      tone: "cyan",
     },
-    done: { comment: null, prompt: "•", cmd: e.text, tone: "muted" },
-    snapshot: { comment: `Agent 02 triggered — freezing snapshot of ${e.host} (production untouched)`, prompt: "$", cmd: e.text, tone: "cyan" },
-    clone: { comment: "Agent 02 booting isolated clone VM from snapshot", prompt: "$", cmd: e.text, tone: "cyan" },
-    plan: { comment: "Agent 02 planning non-destructive upgrade commands", prompt: ">", cmd: e.text, tone: "cyan" },
-    fix_cmd: { comment: "Agent 02 applying patch command inside snapshot clone", prompt: "$", cmd: e.text, tone: "cyan" },
-    fix_out: { comment: null, prompt: e.text.startsWith("rc=0") ? "✓" : "✗", cmd: e.text, tone: e.text.startsWith("rc=0") ? "ok" : "bad" },
+    scan: {
+      prompt: "→",
+      cmd: `Scanner is currently checking installed software and open ports at ${host}.`,
+      tone: "cyan",
+    },
+    scan_ok: {
+      prompt: "✓",
+      cmd: `Scanner finished checking ${host}.`,
+      tone: "ok",
+    },
+    judging: {
+      prompt: "→",
+      cmd: `Agent 1 is currently working at ${host} to evaluate if ${cve} affects it.`,
+      tone: "cyan",
+    },
+    model: {
+      prompt: "•",
+      cmd: humanizeModelVote(e.text, host),
+      tone: "muted",
+    },
+    verdict: {
+      prompt: isSafeVerdict ? "✓" : "!",
+      cmd: isAffectedVerdict
+        ? `Agent 1 found that ${host} is affected by ${cve}.`
+        : isLikelyVerdict
+          ? `Agent 1 found that ${host} is likely affected by ${cve}.`
+          : `Agent 1 confirmed that ${host} is safe and not affected by ${cve}.`,
+      tone: isAffectedVerdict ? "bad" : isLikelyVerdict ? "warn" : "ok",
+    },
+    done: {
+      prompt: "✓",
+      cmd: `Agent 1 finished evaluating all servers for ${cve}.`,
+      tone: "muted",
+    },
+    snapshot: {
+      prompt: "→",
+      cmd: `Agent 2 is taking a safe backup snapshot of ${host} so the live server stays untouched.`,
+      tone: "cyan",
+    },
+    clone: {
+      prompt: "→",
+      cmd: `Agent 2 created an isolated test copy of ${host} in the sandbox.`,
+      tone: "cyan",
+    },
+    plan: {
+      prompt: "→",
+      cmd: `Agent 2 is preparing safe update steps to fix ${cve} on ${host}'s test copy.`,
+      tone: "cyan",
+    },
+    fix_cmd: {
+      prompt: "→",
+      cmd: `Agent 2 is currently applying the security update on ${host}'s test copy.`,
+      tone: "cyan",
+    },
+    fix_out: {
+      prompt: e.text.startsWith("rc=0") ? "✓" : "!",
+      cmd: e.text.startsWith("rc=0")
+        ? `Agent 2 completed an update step on ${host}'s test copy.`
+        : `Agent 2 reported an issue while updating ${host}'s test copy.`,
+      tone: e.text.startsWith("rc=0") ? "ok" : "bad",
+    },
     fix_done: {
-      comment: null,
       prompt: e.text.startsWith("passed") ? "✓" : "!",
-      cmd: `sandbox-fix => ${e.text}`,
+      cmd: e.text.startsWith("passed")
+        ? `Agent 2 verified that ${host}'s test copy is fixed and all services are running normally.`
+        : e.text.startsWith("skipped")
+          ? `Agent 2 skipped sandbox testing for ${host} because snapshots are unavailable.`
+          : `Agent 2 could not verify the fix on ${host}'s test copy.`,
       tone: e.text.startsWith("passed") ? "ok" : e.text.startsWith("skipped") ? "warn" : "bad",
     },
-    poc_gen: { comment: "Agent 03 triggered — writing proof-of-concept exploit script (once per CVE)", prompt: ">", cmd: e.text, tone: "warn" },
-    poc_reuse: { comment: "Agent 03 reusing existing PoC script generated for this CVE", prompt: "↻", cmd: e.text, tone: "warn" },
-    attacker: { comment: "Agent 03 booting isolated attacker VM to launch PoC", prompt: "$", cmd: e.text, tone: "warn" },
-    attack: { comment: "Agent 03 attacking patched snapshot clone over private network", prompt: "$", cmd: e.text, tone: "bad" },
+    poc_gen: {
+      prompt: "→",
+      cmd: `Agent 3 is currently creating a simulated attack for ${cve} (created once for this vulnerability).`,
+      tone: "warn",
+    },
+    poc_reuse: {
+      prompt: "↻",
+      cmd: `Agent 3 is reusing the ${cve} simulated attack already created to test ${host}'s patched copy.`,
+      tone: "warn",
+    },
+    attacker: {
+      prompt: "→",
+      cmd: `Agent 3 started an isolated attacker machine to test ${host}'s patched copy.`,
+      tone: "warn",
+    },
+    attack: {
+      prompt: "→",
+      cmd: `Agent 3 is currently attacking ${host}'s patched copy to verify that ${cve} is blocked.`,
+      tone: "bad",
+    },
     poc_done: {
-      comment: null,
       prompt: e.text.startsWith("patched") ? "✓" : "!",
-      cmd: `exploit-check => ${e.text}`,
+      cmd: e.text.startsWith("patched")
+        ? `Agent 3 confirmed the attack was blocked on ${host}'s patched copy — the fix works.`
+        : e.text.startsWith("vulnerable")
+          ? `Warning: Agent 3's simulated attack still succeeded on ${host}'s copy.`
+          : `Agent 3 finished the attack check for ${host} (no network attack needed).`,
       tone: e.text.startsWith("patched") ? "ok" : e.text.startsWith("vulnerable") ? "bad" : "warn",
     },
-    cleanup: { comment: null, prompt: "$", cmd: e.text, tone: "muted" },
-    error: { comment: null, prompt: "✗", cmd: `${e.host ? `[${e.host}] ` : ""}${e.text}`, tone: "bad" },
+    auto_shutdown: {
+      prompt: "⏻",
+      cmd: `Emergency action: ${cve} exceeded your criticality threshold — ${host} was shut down immediately to protect your network.`,
+      tone: "warn",
+    },
+    cleanup: {
+      prompt: "•",
+      cmd: e.text.includes("wdx-") && !e.text.includes("wdt-")
+        ? `Sandbox removed the temporary attacker machine used for ${host}.`
+        : `Sandbox removed the temporary test copy of ${host}. The live server was never touched.`,
+      tone: "muted",
+    },
+    error: {
+      prompt: "✗",
+      cmd: `Issue${e.host ? ` at ${host}` : ""}: ${e.text}`,
+      tone: "bad",
+    },
   };
-  const spec = map[e.kind] || { comment: null, prompt: "$", cmd: e.text, tone: "muted" };
+  const spec = map[e.kind] || { prompt: "•", cmd: e.text, tone: "muted" };
   const agent = AGENT_TAG[e.kind] || { label: "SYSTEM", tone: "muted" };
-  return { id: e.id, kind: e.kind, host: e.host, agent, ...spec, active };
+  return { id: e.id, kind: e.kind, host: e.host, agent, comment: null, ...spec, active };
 }
 
 function parseVerdict(text = "") {
@@ -223,6 +330,9 @@ export function deriveScene({ cveId, data, rawEvents, replayIndex = null, sandbo
       } else if (lastEv.kind === "verdict") {
         state = parseVerdict(lastEv.text);
         note = lastEv.text;
+      } else if (lastEv.kind === "auto_shutdown") {
+        state = "shutdown";
+        note = "Shut down immediately";
       } else if (lastEv.kind === "error") {
         state = "error";
         note = lastEv.text;
@@ -233,14 +343,16 @@ export function deriveScene({ cveId, data, rawEvents, replayIndex = null, sandbo
           state = "judging";
           note = lastEv.kind === "model" ? lastEv.text : "Checking packages & ports…";
         } else {
-          state = finding.verdict;
+          state = finding.remediation?.status === "auto_shutdown" ? "shutdown" : finding.verdict;
         }
       } else if (finding && cve?.status !== "evaluating") {
-        state = finding.verdict;
+        state = finding.remediation?.status === "auto_shutdown" ? "shutdown" : finding.verdict;
+      } else if (lastEv?.kind === "auto_shutdown") {
+        state = "shutdown";
       } else if (lastEv?.kind === "verdict") {
         state = parseVerdict(lastEv.text);
       } else if (cve?.status === "new" || cve?.status === "evaluating") {
-        state = finding ? finding.verdict : "idle";
+        state = finding ? (finding.remediation?.status === "auto_shutdown" ? "shutdown" : finding.verdict) : "idle";
       }
     }
 
@@ -251,15 +363,17 @@ export function deriveScene({ cveId, data, rawEvents, replayIndex = null, sandbo
     const pocBlocked = isReplay
       ? hostSandboxEvents.some((e) => e.kind === "poc_done" && e.text.startsWith("patched"))
       : finding?.exploit?.status === "patched";
+    const shutDown = state === "shutdown";
 
     return {
       ...vm,
       state,
       note,
-      finding: isReplay && state !== "affected" && state !== "likely" && state !== "not_affected" ? null : finding,
+      finding: isReplay && state !== "affected" && state !== "likely" && state !== "not_affected" && state !== "shutdown" ? null : finding,
       confidence: finding ? Math.round((finding.confidence || 0) * 100) : null,
       fixVerified,
       pocBlocked,
+      shutDown,
     };
   });
 
@@ -450,8 +564,17 @@ export function deriveScene({ cveId, data, rawEvents, replayIndex = null, sandbo
   const working = Boolean(scanningVm || evalBusy || sandboxBusy || (isReplay && replayIndex < fullTimeline.length - 1));
 
   let stage = 0;
+  const shutdownHosts = vmNodes.filter((v) => v.state === "shutdown").map((v) => v.host);
+  const shutdownSample = findings.find((f) => f.remediation?.status === "auto_shutdown")?.remediation;
+  const containment = shutdownHosts.length > 0 ? {
+    hosts: shutdownHosts,
+    cvss: shutdownSample?.cvss ?? cve?.cvss ?? null,
+    threshold: shutdownSample?.threshold ?? null,
+  } : null;
+
   if (cveId) {
-    if (sandbox?.exploitAgent.triggered && sandbox.exploitAgent.state !== "standby") stage = 4;
+    if (containment) stage = 4;
+    else if (sandbox?.exploitAgent.triggered && sandbox.exploitAgent.state !== "standby") stage = 4;
     else if (sandbox) stage = 3;
     else if (judgingVm || events.some((e) => e.kind === "judging" || e.kind === "verdict" || e.kind === "done")) stage = 2;
     else stage = 1;
@@ -460,43 +583,53 @@ export function deriveScene({ cveId, data, rawEvents, replayIndex = null, sandbo
   // Plain-English live narrator headline naming which Agent is acting
   const affectedCount = vmNodes.filter((v) => v.state === "affected").length;
   const safeCount = vmNodes.filter((v) => v.state === "not_affected").length;
-  let headline = "All systems monitored. Enter a CVE above or wait for the live feed.";
+  let headline = "All servers are monitored. Enter a vulnerability ID above or wait for the live feed.";
+  let outcomeTone = "neutral";
 
   if (!cveId && scanningVm) {
-    headline = `Scanner is collecting packages, open ports, and services on ${scanningVm.host}…`;
+    headline = `Checking installed software and running services on ${scanningVm.host}…`;
   } else if (cveId) {
     const pa = sandbox?.patchAgent;
     const ea = sandbox?.exploitAgent;
-    if (ea?.state === "coding_poc") {
-      headline = `Agent 03 (Exploit Agent) woke up and is writing a PoC exploit (${ea.pocFile}) once for ${cveId}…`;
+    if (containment && !judgingVm && !evalBusy) {
+      outcomeTone = "warn";
+      const list = shutdownHosts.join(", ");
+      const scoreText = containment.cvss != null && containment.threshold != null
+        ? ` (CVSS ${containment.cvss} ≥ ${containment.threshold} threshold)`
+        : "";
+      headline = `Emergency auto-shutdown triggered${scoreText}: ${list} ${shutdownHosts.length === 1 ? "was" : "were"} shut down immediately to protect your network.`;
+    } else if (ea?.state === "coding_poc") {
+      headline = `Agent 3 (Attack Simulator) is creating one simulated attack for ${cveId}…`;
     } else if (ea?.state === "reusing_poc") {
-      headline = `Agent 03 is reusing the ${cveId} PoC (${ea.pocFile}) against ${sandbox.sourceHost} — no regeneration needed…`;
+      headline = `Agent 3 is reusing the simulated attack already created for ${cveId} to test ${sandbox.sourceHost}…`;
     } else if (ea?.state === "spawning_vm") {
-      headline = `Agent 03 finished writing ${ea.pocFile} and is booting isolated Attacker VM ${sandbox.attackerVm.name}…`;
+      headline = `Agent 3 is starting an isolated test attacker to verify the updated copy of ${sandbox.sourceHost}…`;
     } else if (ea?.state === "attacking") {
-      headline = `Agent 03 is attacking patched clone ${sandbox.cloneVm.name} from ${sandbox.attackerVm.name}…`;
+      headline = `Agent 3 is testing the simulated attack against the updated copy of ${sandbox.sourceHost}…`;
     } else if (ea?.state === "patched") {
-      headline = `Verified: Agent 02 patched the snapshot clone and Agent 03's PoC attack was blocked — production untouched.`;
+      outcomeTone = "safe";
+      headline = `Fix proven safe: ${safeCount} server${safeCount === 1 ? " is" : "s are"} unaffected. For ${affectedCount > 1 ? `the ${affectedCount} affected servers` : sandbox.sourceHost}, an update was tested on ${affectedCount > 1 ? "temporary copies" : "a temporary copy"}, kept all services running, and blocked a simulated attack — ready to apply whenever you choose.`;
     } else if (ea?.state === "vulnerable") {
-      headline = `Warning: Agent 03's PoC exploit still succeeded against ${sandbox.cloneVm.name} after patching.`;
+      outcomeTone = "warn";
+      headline = `Attention needed: Agent 3's simulated attack still succeeded on the test copy of ${sandbox.sourceHost}.`;
     } else if (ea?.state === "blocked" || ea?.state === "not_feasible") {
-      headline = `Agent 02 verified the patch on ${sandbox.cloneVm.name}; Agent 03 PoC step finished (${ea.state.replace("_", " ")}).`;
-    } else if (pa?.state === "queued" || pa?.state === "snapshotting") {
-      headline = `${sandbox.sourceHost} is affected — Agent 02 (Patch Agent) woke up and is snapshotting the VM…`;
-    } else if (pa?.state === "cloning") {
-      headline = `Agent 02 is booting isolated snapshot clone ${sandbox.cloneVm.name} so production stays untouched…`;
+      outcomeTone = "safe";
+      headline = `Fix tested: Agent 2 updated a temporary copy of ${sandbox.sourceHost} and confirmed all services stayed healthy.`;
+    } else if (pa?.state === "queued" || pa?.state === "snapshotting" || pa?.state === "cloning") {
+      headline = `${sandbox.sourceHost} is affected — Agent 2 (Fix Tester) is creating a temporary copy in the safe test room so the live server stays untouched…`;
     } else if (pa?.state === "planning" || pa?.state === "patching") {
-      headline = `Agent 02 is applying AI-planned upgrade commands inside snapshot clone ${sandbox.cloneVm.name}…`;
+      headline = `Agent 2 (Fix Tester) is installing the software update inside the temporary copy of ${sandbox.sourceHost}…`;
     } else if (pa?.state === "passed") {
-      headline = `Agent 02 verified the fix on ${sandbox.cloneVm.name} — handing off to Agent 03 to craft a PoC attack…`;
+      headline = `Agent 2 confirmed the update works on ${sandbox.sourceHost}'s copy — handing off to Agent 3 to simulate an attack…`;
     } else if (judgingVm) {
-      headline = `Agent 01 (AI Jury) is inspecting ${judgingVm.host} packages and open ports against ${cveId}…`;
+      headline = `Agent 1 (Security Inspector) is checking whether ${judgingVm.host} uses software affected by ${cveId}…`;
     } else if (evalBusy) {
-      headline = `Alert ${cveId} arrived — waking up Agent 01 (AI Security Jury)…`;
+      headline = `New threat ${cveId} arrived — waking up Agent 1 (Security Inspector) to check all servers…`;
     } else if (affectedCount > 0) {
-      headline = `${cveId}: ${affectedCount} VM${affectedCount > 1 ? "s" : ""} affected, ${safeCount} safe.`;
+      headline = `${cveId}: ${affectedCount} server${affectedCount > 1 ? "s" : ""} affected, ${safeCount} unaffected.`;
     } else if (safeCount > 0) {
-      headline = `${cveId} checked across ${vmNodes.length} VM${vmNodes.length === 1 ? "" : "s"} — all machines are safe.`;
+      outcomeTone = "safe";
+      headline = `No action needed: All ${vmNodes.length} server${vmNodes.length === 1 ? "" : "s"} were checked against ${cveId} and none are affected.`;
     }
   }
 
@@ -509,12 +642,14 @@ export function deriveScene({ cveId, data, rawEvents, replayIndex = null, sandbo
     fullTimelineLength: fullTimeline.length,
     stage,
     working,
+    outcomeTone,
     juryBusy: Boolean(evalBusy),
     headline,
     juryModels,
     judgingHost: judgingVm?.host || null,
     vmNodes,
     sandbox,
+    containment,
     terminalLines,
   };
 }

@@ -20,7 +20,14 @@ export default function CveFeed({ cves, onAnalyze }) {
             {cves.map((c) => (
               <li key={c.id} className="flex min-w-0 items-center gap-2.5 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <CveLink id={c.id} />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <CveLink id={c.id} />
+                    {c.cvss != null && (
+                      <Badge variant={c.cvss >= 9.0 ? "affected" : c.cvss >= 7.0 ? "likely" : "secondary"}>
+                        CVSS {c.cvss}
+                      </Badge>
+                    )}
+                  </div>
                   <div className="truncate text-xs text-muted-foreground" title={c.title}>{c.title}</div>
                   {c.status === "skipped" && <div className="font-mono text-[11px] text-muted-foreground">No VM inventory yet</div>}
                 </div>

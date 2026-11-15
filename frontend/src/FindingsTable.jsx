@@ -29,6 +29,8 @@ function PipelineTags({ f }) {
   const exp = f.exploit?.status;
   return (
     <>
+      {rem === "auto_shutdown" && <Badge variant="likely">⏻ Auto-shut down</Badge>}
+      {rem === "shutdown_failed" && <Badge variant="affected">Shutdown failed</Badge>}
       {(rem === "queued" || rem === "running") && (
         <Badge variant="outline" className="text-primary"><Spinner aria-hidden="true" />Fixing</Badge>
       )}

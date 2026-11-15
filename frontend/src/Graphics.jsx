@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Crosshair, Play, Square } from "lucide-react";
+import { CheckCircle2, Crosshair, Play, Power, Square } from "lucide-react";
 import AgentTerminal from "./AgentTerminal.jsx";
 import FindingDetails from "./FindingDetails.jsx";
 import GraphicsStage from "./GraphicsStage.jsx";
@@ -10,10 +10,10 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 const STEPS = [
-  { n: "01", label: "CVE alert" },
-  { n: "02", label: "Agent 01 · Jury" },
-  { n: "03", label: "Agent 02 · Patch" },
-  { n: "04", label: "Agent 03 · Exploit" },
+  { n: "01", label: "New Threat" },
+  { n: "02", label: "Agent 1 · Check Servers" },
+  { n: "03", label: "Agent 2 · Test Fix" },
+  { n: "04", label: "Agent 3 · Simulate Attack" },
 ];
 
 function cveTone(cve, findings) {
@@ -182,25 +182,35 @@ export default function Graphics({ data, onAnalyze }) {
       </Card>
 
       {/* Pipeline Stepper + Live Plain-English Narrator */}
-      <Card className="grid gap-3 border-l-2 border-l-primary px-4 py-3">
+      <Card className={`grid gap-3 border-l-2 px-4 py-3 transition-colors ${
+        !scene.working && scene.outcomeTone === "safe"
+          ? "border-not-affected/50 border-l-not-affected bg-not-affected/[0.06]"
+          : !scene.working && scene.outcomeTone === "warn"
+            ? "border-likely/55 border-l-likely bg-likely/[0.07]"
+            : "border-l-primary"
+      }`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <ol className="flex flex-wrap items-center gap-1.5 sm:gap-2" aria-label="Pipeline stage">
             {STEPS.map((s, idx) => {
               const stepNum = idx + 1;
+              const isShutdownStep = stepNum === 4 && Boolean(scene.containment);
+              const label = isShutdownStep ? "Auto-Shut Down VM" : s.label;
               const done = scene.stage > stepNum || (scene.stage === stepNum && !scene.working);
               const current = scene.stage === stepNum && scene.working;
-              const cls = current
-                ? "border-primary bg-primary/15 text-primary"
-                : done
-                  ? "border-not-affected/45 bg-not-affected/10 text-not-affected"
-                  : "border-border bg-background/50 text-muted-foreground";
+              const cls = isShutdownStep
+                ? "border-likely/60 bg-likely/15 text-likely"
+                : current
+                  ? "border-primary bg-primary/15 text-primary"
+                  : done
+                    ? "border-not-affected/45 bg-not-affected/10 text-not-affected"
+                    : "border-border bg-background/50 text-muted-foreground";
               return (
                 <li
                   key={s.n}
                   className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider ${cls}`}
                 >
                   <span className="opacity-70">{s.n}</span>
-                  <span>{s.label}</span>
+                  <span>{label}</span>
                 </li>
               );
             })}
@@ -211,7 +221,7 @@ export default function Graphics({ data, onAnalyze }) {
               <span aria-hidden="true" className="size-2 rounded-full bg-not-affected" />Safe
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden="true" className="size-2 rounded-full bg-likely" />Likely
+              <span aria-hidden="true" className="size-2 rounded-full bg-likely" />Shut down / Likely
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span aria-hidden="true" className="size-2 rounded-full bg-affected" />Affected
@@ -219,8 +229,14 @@ export default function Graphics({ data, onAnalyze }) {
           </div>
         </div>
 
-        <p role="status" className="text-sm font-medium text-foreground">
-          {scene.headline}
+        <p role="status" className="flex items-start gap-2 text-sm font-medium text-foreground">
+          {!scene.working && scene.outcomeTone === "safe" && (
+            <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-not-affected" />
+          )}
+          {!scene.working && scene.outcomeTone === "warn" && (
+            <Power aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-likely" />
+          )}
+          <span>{scene.headline}</span>
         </p>
       </Card>
 

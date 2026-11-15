@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Terminal } from "lucide-react";
+import { Activity } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
@@ -16,6 +16,7 @@ const AGENT_BADGE = {
   cyan: "border-primary/40 bg-primary/10 text-primary",
   emerald: "border-not-affected/40 bg-not-affected/10 text-not-affected",
   rose: "border-affected/40 bg-affected/10 text-affected",
+  warn: "border-likely/50 bg-likely/15 text-likely",
   ok: "border-not-affected/35 bg-not-affected/10 text-not-affected",
   muted: "border-border bg-muted/40 text-muted-foreground",
 };
@@ -32,13 +33,13 @@ export default function AgentTerminal({ lines, working, cveId }) {
     <Card className="flex min-w-0 flex-col gap-0 overflow-hidden border-border/90 bg-[#05080f] py-0 shadow-lg lg:sticky lg:top-20">
       <div className="flex items-center justify-between gap-2 border-b border-border/80 bg-card/90 px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <Terminal aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
-          <span className="truncate font-mono text-xs font-semibold text-foreground">
-            agent@eleven0zero:~$
+          <Activity aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
+          <span className="truncate font-mono text-xs font-semibold tracking-wider uppercase text-foreground">
+            Live Agent Activity
           </span>
           {cveId && (
             <span className="hidden truncate font-mono text-[11px] text-muted-foreground sm:inline">
-              [{cveId}]
+              · {cveId}
             </span>
           )}
         </div>
@@ -63,7 +64,7 @@ export default function AgentTerminal({ lines, working, cveId }) {
           <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center text-muted-foreground">
             <p>Waiting for agent activity…</p>
             <p className="text-[11px] text-muted-foreground/75">
-              Commands executed by Agent 01 (Jury), Agent 02 (Patch), and Agent 03 (Exploit) stream here live.
+              Plain-English updates from Agent 1, Agent 2, and Agent 3 appear here live.
             </p>
           </div>
         ) : (
@@ -93,7 +94,7 @@ export default function AgentTerminal({ lines, working, cveId }) {
                     <span aria-hidden="true" className={`select-none font-semibold ${TONE_CLASS[line.tone] || "text-primary"}`}>
                       {line.prompt}
                     </span>
-                    <span className={`min-w-0 flex-1 break-all ${line.tone === "muted" ? "text-muted-foreground" : "text-foreground"}`}>
+                    <span className={`min-w-0 flex-1 break-words ${line.tone === "muted" ? "text-muted-foreground" : "text-foreground"}`}>
                       {line.cmd}
                       {line.active && (
                         <span

@@ -8,12 +8,13 @@ from fastapi import FastAPI, HTTPException
 BASE = os.getenv("PUBLIC_URL", "http://mock-cve:8000")
 
 
-def cve(cve_id, title, description, product, versions):
+def cve(cve_id, title, description, product, versions, cvss):
     return {
         "cveMetadata": {"cveId": cve_id, "state": "PUBLISHED", "datePublished": "2024-01-01T00:00:00.000Z"},
         "containers": {"cna": {
             "title": title,
             "descriptions": [{"lang": "en", "value": description}],
+            "metrics": [{"cvssV3_1": {"version": "3.1", "baseScore": cvss}}],
             "affected": [{"vendor": "n/a", "product": product, "packageName": product, "versions": versions}],
         }},
     }
@@ -24,14 +25,14 @@ CVES = {c["cveMetadata"]["cveId"]: c for c in [
         "Jinja2 before 3.1.3 lets the xmlattr filter accept keys containing spaces, so an application that "
         "passes user-controlled keys to xmlattr can inject arbitrary HTML attributes (cross-site scripting). "
         "Fixed in 3.1.3.",
-        "Jinja2", [{"version": "0", "lessThan": "3.1.3", "status": "affected", "versionType": "python"}]),
+        "Jinja2", [{"version": "0", "lessThan": "3.1.3", "status": "affected", "versionType": "python"}], 6.1),
     cve("CVE-2024-6387", "OpenSSH regreSSHion race condition in sshd",
         "A signal handler race condition in OpenSSH sshd allows unauthenticated remote code execution "
         "on glibc-based Linux systems.",
-        "openssh", [{"version": "8.5p1", "lessThan": "9.8p1", "status": "affected"}]),
+        "openssh", [{"version": "8.5p1", "lessThan": "9.8p1", "status": "affected"}], 9.8),
     cve("CVE-2023-44487", "HTTP/2 Rapid Reset denial of service",
         "The HTTP/2 protocol allows denial of service because request cancellation can reset many streams quickly.",
-        "nghttp2", [{"version": "0", "lessThan": "1.57.0", "status": "affected"}]),
+        "nghttp2", [{"version": "0", "lessThan": "1.57.0", "status": "affected"}], 7.5),
 ]}
 
 

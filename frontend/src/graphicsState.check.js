@@ -36,8 +36,9 @@ assert.equal(live.sandbox.attackerVm.name, "wdx-def456");
 assert.equal(live.sandbox.attackerVm.spawned, true);
 assert.equal(live.stage, 4);
 assert.equal(live.working, false);
-assert(live.terminalLines.some((l) => l.agent.label === "AGENT 02 · PATCH"));
-assert(live.terminalLines.some((l) => l.agent.label === "AGENT 03 · EXPLOIT"));
+assert.equal(live.outcomeTone, "safe");
+assert(live.terminalLines.some((l) => l.agent.label === "AGENT 2 · FIX TESTER"));
+assert(live.terminalLines.some((l) => l.agent.label === "AGENT 3 · ATTACK SIMULATOR"));
 
 // 2. Replay step-by-step starts VMs idle, then triggers Agent 02, then Agent 03
 const step0 = deriveScene({ cveId: "CVE-2020-14343", data, rawEvents: [], replayIndex: 0 });
@@ -82,5 +83,32 @@ assert.equal(multiVm1.terminalLines.filter((l) => l.kind === "poc_gen").length, 
 assert.equal(multiVm1.terminalLines.filter((l) => l.kind === "poc_reuse").length, 1);
 assert.equal(multiVm1.sandbox.exploitAgent.pocStatus, "ready");
 assert.equal(multiVm2.sandbox.exploitAgent.pocStatus, "reused");
+assert(multiVm1.terminalLines.some((l) => l.cmd === "Agent 1 is currently working at vm1.boxd to evaluate if CVE-2024-22195 affects it."));
+
+// 4. Criticality >= threshold shuts down affected VMs immediately and skips Safe Test Room
+const shutdownData = {
+  cves: [{ id: "CVE-2024-6387", title: "regreSSHion", cvss: 9.8, status: "evaluated" }],
+  vms: [
+    { host: "safe.boxd", os: "Ubuntu 24.04", npkg: 400, ports: [], collected_at: "2026-11-15T10:00:00Z" },
+    { host: "gw.boxd", os: "Debian 12", npkg: 420, ports: ["sshd@0.0.0.0:22"], collected_at: "2026-11-15T10:00:00Z" },
+  ],
+  findings: [
+    { cve_id: "CVE-2024-6387", host: "safe.boxd", verdict: "not_affected", confidence: 0.98, votes: [] },
+    {
+      cve_id: "CVE-2024-6387",
+      host: "gw.boxd",
+      verdict: "affected",
+      confidence: 0.99,
+      votes: [],
+      remediation: { status: "auto_shutdown", cvss: 9.8, threshold: 9.0, cmd: "boxd machine stop gw" },
+    },
+  ],
+};
+const shutdownScene = deriveScene({ cveId: "CVE-2024-6387", data: shutdownData, rawEvents: [] });
+assert.deepEqual(shutdownScene.vmNodes.map((v) => v.state), ["not_affected", "shutdown"]);
+assert.equal(shutdownScene.sandbox, null);
+assert.deepEqual(shutdownScene.containment, { hosts: ["gw.boxd"], cvss: 9.8, threshold: 9.0 });
+assert.equal(shutdownScene.outcomeTone, "warn");
+assert(shutdownScene.terminalLines.some((l) => l.kind === "auto_shutdown"));
 
 console.log("ok");
