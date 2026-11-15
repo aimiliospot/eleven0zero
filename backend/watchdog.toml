@@ -1,8 +1,0 @@
-# CVE Watchdog timing. After editing, apply with: docker compose restart
-
-[cve_feed]
-poll_seconds = 60        # how often to check cve.org for new CVEs
-lookback_minutes = 60    # on start, also evaluate CVEs published in the last N minutes
-
-[vm_scan]
-interval_seconds = 600   # how often to re-collect every VM's inventory over SSH

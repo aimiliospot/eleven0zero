@@ -3,8 +3,8 @@ import sys
 from django.apps import AppConfig
 
 
-class WatchdogConfig(AppConfig):
-    name = "watchdog"
+class Eleven0zeroConfig(AppConfig):
+    name = "eleven0zero"
 
     def ready(self):
         # only the real server runs the feed watcher / inventory loops (not migrate, test, shell...)

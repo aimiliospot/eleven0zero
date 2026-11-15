@@ -42,8 +42,8 @@ class Migration(migrations.Migration):
                 ('evidence', models.TextField(blank=True)),
                 ('actions', models.JSONField(default=list)),
                 ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
-                ('cve', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='findings', to='watchdog.cve')),
-                ('vm', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='findings', to='watchdog.vm')),
+                ('cve', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='findings', to='eleven0zero.cve')),
+                ('vm', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='findings', to='eleven0zero.vm')),
             ],
             options={
                 'ordering': ['-created_at'],

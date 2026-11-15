@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('watchdog', '0001_initial'),
+        ('eleven0zero', '0001_initial'),
     ]
 
     operations = [

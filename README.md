@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ eleven0zero — CVE Watchdog
+# 🛡️ eleven0zero
 
 **From "a CVE was just published" to "this fix is tested and the exploit no longer works" — automatically.**
 
@@ -25,7 +25,7 @@ Dozens of CVEs are published every day. For each one, someone has to answer thre
 2. **What's the fix?** And will applying it break anything?
 3. **Does the fix work?** Is the machine still exploitable afterwards?
 
-Today that is hours of manual triage per CVE. CVE Watchdog does all three on its own, in minutes, without touching production.
+Today that is hours of manual triage per CVE. eleven0zero does all three on its own, in minutes, without touching production.
 
 ## How it works
 
@@ -62,7 +62,7 @@ flowchart LR
 
 ```
 ┌──────────── docker compose ─────────────────────────────────────────┐
-│  watchdog            Django API + React dashboard   :5000 (local)   │
+│  eleven0zero            Django API + React dashboard   :5000 (local)   │
 │  worker              Celery: CVE evaluation, LLM calls (×4)         │
 │  worker-remediation  Celery: snapshot/clone/exploit tests (×1)      │
 │  beat                Celery: schedules the CVE feed poll            │
@@ -76,15 +76,17 @@ flowchart LR
 ```
 backend/
   config/            Django settings, Celery app, timing config loader
-  watchdog/
+  eleven0zero/
     collector.py     runs on the VM over SSH, prints a JSON inventory
     engine.py        feed → judge → remediate → exploit
     tasks.py         Celery tasks
     views.py         JSON API for the dashboard
-  watchdog.toml      poll and scan intervals
+  config/config.py   poll and scan intervals
 frontend/            React + Vite + Tailwind dashboard
-setup-vms.*          creates 3 demo VMs (one deliberately vulnerable)
-rebuild.*            full reset: VMs, snapshots, database, containers
+tools/               Python VM scripts: setup_vms, rebuild, delete_all_vms
+demo/                mock CVE API for demos
+docker-compose-demo.yml  stack fed by the mock CVE API
+docker-compose-dev.yml   stack + `tools` service
 ```
 
 ## Quick start
@@ -96,7 +98,7 @@ rebuild.*            full reset: VMs, snapshots, database, containers
 cp .env.example .env        # then fill in GOOGLE_API_KEY (+ BOXD_TOKEN, VENICE_API_KEY)
 
 # 2. (optional) Create the demo VMs on boxd
-./setup-vms.sh              # Windows: powershell -ExecutionPolicy Bypass -File .\setup-vms.ps1
+docker compose -f docker-compose-dev.yml run --rm tools python setup_vms.py
 
 # 3. Run
 docker compose up --build -d
@@ -108,7 +110,7 @@ Open **http://localhost:5000**, add hosts (e.g. `keen-pond.boxd`, `root@10.0.0.5
 
 ### Demo scenario
 
-`setup-vms` creates three machines:
+`setup_vms.py` creates three machines:
 
 | VM | Setup | Expected result |
 |---|---|---|
@@ -128,15 +130,12 @@ To trigger it right away, open the dashboard and analyze `CVE-2020-14343`.
 | `VENICE_API_KEY` | for exploit tests | PoC generation, and `venice:` judge models |
 | `SSH_DIR` / `BOXD_DIR` | | Key folders to mount (defaults: `~/.ssh`, `~/AppData/Roaming/boxd`) |
 
-Timing lives in [`backend/watchdog.toml`](backend/watchdog.toml). Edit it, then run `docker compose restart`:
+Timing lives in [`backend/config/config.py`](backend/config/config.py). Edit it, then run `docker compose restart`:
 
-```toml
-[cve_feed]
-poll_seconds = 60        # how often to check cve.org
-lookback_minutes = 60    # on start, also evaluate the last N minutes
-
-[vm_scan]
-interval_seconds = 600   # how often to re-collect VM inventories
+```python
+CVE_POLL_SEC = 60        # how often to check cve.org
+CVE_LOOKBACK_MIN = 60    # on start, also evaluate the last N minutes
+VM_SCAN_SEC = 600        # how often to re-collect VM inventories
 ```
 
 Judge, remediation and exploitation models can be chosen in the dashboard's **Settings** page.
@@ -152,10 +151,12 @@ CELERY_EAGER=1 python manage.py migrate && CELERY_EAGER=1 python manage.py runse
 cd frontend && npm install && npm run dev
 
 # tests
-cd backend && python manage.py test && python config/intervals.py
+cd backend && python manage.py test
 ```
 
-To start over completely (demo VMs, **all** boxd snapshots, database), run `./rebuild.sh` or `rebuild.ps1`.
+To start over completely (demo VMs, **all** boxd snapshots, database), run `docker compose -f docker-compose-dev.yml run --rm tools python rebuild.py`, then the `docker compose down -v && docker compose up --build -d` it prints.
+
+To demo without cve.org, run `docker compose -f docker-compose-demo.yml up --build --force-recreate -d`: the feed is served by `demo/mock_cve_api.py` (FastAPI) (CVE-2020-14343, CVE-2024-6387, CVE-2023-44487). Edit the `CVES` list there to change them. Each `up` also resets the boxd demo VMs, all boxd snapshots and the database (needs `BOXD_TOKEN`), then adds the three demo hosts to the dashboard automatically. Hosts ending in `.boxd` are scanned through the boxd CLI with `BOXD_TOKEN` alone, so the demo needs no SSH keys; other hosts are scanned over SSH.
 
 ## Known limits
 

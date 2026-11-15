@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('watchdog', '0004_exploit'),
+        ('eleven0zero', '0004_exploit'),
     ]
 
     operations = [
@@ -36,16 +36,16 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='setting',
             name='actions_model',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='watchdog.modelapi'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='eleven0zero.modelapi'),
         ),
         migrations.AddField(
             model_name='setting',
             name='eval_models',
-            field=models.ManyToManyField(blank=True, related_name='+', to='watchdog.modelapi'),
+            field=models.ManyToManyField(blank=True, related_name='+', to='eleven0zero.modelapi'),
         ),
         migrations.AddField(
             model_name='setting',
             name='exploit_model',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='watchdog.modelapi'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='eleven0zero.modelapi'),
         ),
     ]

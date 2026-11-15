@@ -1,0 +1,26 @@
+# Dev stack + one-off VM tools (need BOXD_TOKEN in .env):
+#   docker compose -f docker-compose-dev.yml run --rm tools python setup_vms.py
+#   docker compose -f docker-compose-dev.yml run --rm tools python rebuild.py
+#   docker compose -f docker-compose-dev.yml run --rm tools python delete_all_vms.py
+services:
+  redis:
+    extends: { file: docker-compose.yml, service: redis }
+  eleven0zero:
+    extends: { file: docker-compose.yml, service: eleven0zero }
+  worker:
+    extends: { file: docker-compose.yml, service: worker }
+  worker-remediation:
+    extends: { file: docker-compose.yml, service: worker-remediation }
+  beat:
+    extends: { file: docker-compose.yml, service: beat }
+
+  tools:
+    extends: { file: docker-compose.yml, service: eleven0zero }
+    profiles: [tools]
+    ports: !reset []
+    working_dir: /app/tools
+    depends_on: !reset []
+    restart: "no"
+
+volumes:
+  eleven0zero-data:

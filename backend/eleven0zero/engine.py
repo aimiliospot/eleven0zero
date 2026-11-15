@@ -1,4 +1,4 @@
-"""CVE Watchdog engine: watch cve.org feed, inventory VMs over SSH, let Gemini judge exposure."""
+"""eleven0zero engine: watch cve.org feed, inventory VMs over SSH, let Gemini judge exposure."""
 import base64, json, os, re, secrets, shutil, subprocess, threading, time, traceback, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone as tz
@@ -10,8 +10,9 @@ from django.utils import timezone
 
 from .models import Cve, Finding, Setting, Vm
 
-DELTA_URL = "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/deltaLog.json"
-CVE_API = "https://cveawg.mitre.org/api/cve/{}"
+# env overrides let the demo stack point at demo/mock_cve_api.py
+DELTA_URL = os.getenv("CVE_DELTA_URL", "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/deltaLog.json")
+CVE_API = os.getenv("CVE_API_URL", "https://cveawg.mitre.org/api/cve/{}")
 MODEL = os.getenv("GEMINI_MODEL", "gemini-4-carbon")
 VENICE_MODEL = "deepseek-v4-1-flash-1017-uncensored"  # exploit generation only: PoC writing, not judging/remediation
 VENICE_API_KEY = os.getenv("VENICE_API_KEY", "")
@@ -25,7 +26,7 @@ STOP = {"linux", "kernel", "n/a", "unknown", "server", "client", "library", "com
 
 
 def fetch_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "cve-watchdog"})
+    req = urllib.request.Request(url, headers={"User-Agent": "eleven0zero"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
 
@@ -42,12 +43,20 @@ def ssh_target(host):
     return f"ssh://{host}" if ":" in host else host
 
 
+def collect_command(host):
+    """boxd machines are reached through the boxd CLI (BOXD_TOKEN only, no SSH keys); everything else over SSH."""
+    m = BOXD_HOST.fullmatch(host)
+    if m and os.getenv("BOXD_TOKEN") and shutil.which("boxd"):
+        return ["boxd", "machine", "exec", m.group(1), "--timeout", "120", "--", "python3", "-"]
+    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+            "-o", "StrictHostKeyChecking=accept-new", "--", ssh_target(host), "python3", "-"]
+
+
 def collect(host):
-    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                        "-o", "StrictHostKeyChecking=accept-new", "--", ssh_target(host), "python3", "-"],
-                       input=(HERE / "collector.py").read_text(), capture_output=True, text=True, timeout=120)
+    r = subprocess.run(collect_command(host), input=(HERE / "collector.py").read_text(),
+                       capture_output=True, text=True, timeout=150)
     if r.returncode:
-        raise RuntimeError(r.stderr.strip()[-500:])
+        raise RuntimeError((r.stderr or r.stdout).strip()[-500:])
     return json.loads(r.stdout)
 
 
@@ -283,7 +292,7 @@ def store(record):
 
 
 def new_cve_ids():
-    """CVEs from the feed's last CVE_LOOKBACK_MIN minutes (watchdog.toml) that we haven't stored yet; stores them."""
+    """CVEs from the feed's last CVE_LOOKBACK_MIN minutes (config.py) that we haven't stored yet; stores them."""
     since = (datetime.now(tz.utc) - timedelta(minutes=settings.CVE_LOOKBACK_MIN)).isoformat().replace("+00:00", "Z")
     ids = []
     for entry in reversed(fetch_json(DELTA_URL)):  # oldest first
@@ -586,9 +595,19 @@ def loop(fn, every, delay=0):
     threading.Thread(target=run, daemon=True).start()
 
 
+def add_demo_hosts():
+    """Adds the hosts in DEMO_HOSTS (comma-separated; set by docker-compose-demo.yml) so a demo needs no manual setup."""
+    for host in filter(None, (h.strip() for h in os.getenv("DEMO_HOSTS", "").split(","))):
+        if HOST_RE.fullmatch(host):
+            Vm.objects.get_or_create(host=host)
+        else:
+            print(f"[demo] ignoring invalid DEMO_HOSTS entry {host!r}")
+
+
 def start():
     """Web-process loops. New-CVE polling, replays and remediation run in Celery (see tasks.py)."""
     def boot():
+        add_demo_hosts()
         inventory_once()
         remediate_pending()
         loop(lambda _: inventory_once(), settings.VM_SCAN_SEC, delay=settings.VM_SCAN_SEC)

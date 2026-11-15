@@ -12,11 +12,12 @@ RUN curl -fsSL https://boxd.sh/downloads/install.sh | BOXD_INSTALL_DIR=/usr/loca
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY backend/manage.py backend/watchdog.toml ./
+COPY backend/manage.py ./
 COPY backend/config config
-COPY backend/watchdog watchdog
+COPY backend/eleven0zero eleven0zero
 COPY --from=ui /static ./static
 ENV DB_PATH=/data/django.db PYTHONUNBUFFERED=1
+COPY tools tools
 COPY backend/entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["sh", "/entrypoint.sh"]
 CMD ["sh", "-c", "python manage.py migrate --noinput && exec python manage.py runserver 0.0.0.0:5000 --noreload"]

@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('watchdog', '0006_remove_setting_exploit_model_and_more'),
+        ('eleven0zero', '0006_remove_setting_exploit_model_and_more'),
     ]
 
     operations = [

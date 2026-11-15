@@ -1,0 +1,62 @@
+# Demo stack: CVE feed comes from demo/mock_cve_api.py instead of cve.org.
+# Run: docker compose -f docker-compose-demo.yml up --build --force-recreate -d
+# --force-recreate is required: reset-db wipes the DB on every up, so running containers must restart too.
+x-mock-feed: &mock-feed
+  CVE_DELTA_URL: http://mock-cve:8000/deltaLog.json
+  CVE_API_URL: http://mock-cve:8000/api/cve/{}
+
+services:
+  mock-cve:
+    image: python:3.12-slim
+    working_dir: /demo
+    command: sh -c "pip install -q fastapi uvicorn && uvicorn mock_cve_api:app --host 0.0.0.0 --port 8000"
+    volumes: ["./demo:/demo:ro"]
+    restart: unless-stopped
+
+  reset-db:  # wipes the SQLite DB on every `up`, so each demo starts empty
+    image: busybox
+    command: sh -c "rm -f /data/django.db*"
+    volumes: [eleven0zero-data:/data]
+    depends_on:
+      reset-vms: { condition: service_completed_successfully }
+
+  reset-vms:  # deletes + recreates the demo boxd VMs (and all snapshots) on every `up`; takes a few minutes
+    extends: { file: docker-compose.yml, service: eleven0zero }
+    working_dir: /app/tools
+    command: python rebuild.py
+    ports: !reset []
+    depends_on: !reset []
+    restart: "no"
+
+  redis:
+    extends: { file: docker-compose.yml, service: redis }
+
+  eleven0zero:
+    extends: { file: docker-compose.yml, service: eleven0zero }
+    environment:
+      <<: *mock-feed
+      DEMO_HOSTS: keen-pond.boxd,free-sky.boxd,cve-2024-6387-lab.boxd  # added to the dashboard on start
+    depends_on:
+      mock-cve: { condition: service_started }
+      reset-db: { condition: service_completed_successfully }
+
+  worker:
+    extends: { file: docker-compose.yml, service: worker }
+    environment: *mock-feed
+    depends_on:
+      reset-db: { condition: service_completed_successfully }
+
+  worker-remediation:
+    extends: { file: docker-compose.yml, service: worker-remediation }
+    environment: *mock-feed
+    depends_on:
+      reset-db: { condition: service_completed_successfully }
+
+  beat:
+    extends: { file: docker-compose.yml, service: beat }
+    environment: *mock-feed
+    depends_on:
+      reset-db: { condition: service_completed_successfully }
+
+volumes:
+  eleven0zero-data:

@@ -101,3 +101,25 @@ class SettingsApi(TestCase):
         assert engine.VENICE + engine.VENICE_MODEL in self.client.get("/api/models").json()["models"]
         strict = type(self.client)(enforce_csrf_checks=True)
         assert strict.put("/api/settings", {"models": ["m"]}, content_type="application/json").status_code == 403
+
+
+class DemoHosts(TestCase):
+    def test_adds_valid_demo_hosts_once(self):
+        from unittest import mock
+        with mock.patch.dict("os.environ", {"DEMO_HOSTS": "a.boxd, bad host!,,b.boxd"}):
+            engine.add_demo_hosts()
+            engine.add_demo_hosts()
+        assert sorted(Vm.objects.values_list("host", flat=True)) == ["a.boxd", "b.boxd"]
+        engine.add_demo_hosts()  # unset: no-op
+        assert Vm.objects.count() == 2
+
+
+class CollectCommand(SimpleTestCase):
+    def test_boxd_hosts_use_the_cli_only_with_a_token(self):
+        from unittest import mock
+        with mock.patch("shutil.which", return_value="/usr/local/bin/boxd"):
+            with mock.patch.dict("os.environ", {"BOXD_TOKEN": "t"}):
+                assert engine.collect_command("keen-pond.boxd")[:4] == ["boxd", "machine", "exec", "keen-pond"]
+                assert engine.collect_command("root@10.0.0.5")[0] == "ssh"
+            with mock.patch.dict("os.environ", {"BOXD_TOKEN": ""}):
+                assert engine.collect_command("keen-pond.boxd")[0] == "ssh"

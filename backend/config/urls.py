@@ -1,6 +1,6 @@
 from django.urls import path
 
-from watchdog import views
+from eleven0zero import views
 
 urlpatterns = [
     path("api/state", views.state),
